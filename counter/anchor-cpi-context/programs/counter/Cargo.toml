@@ -24,6 +24,7 @@ light-sdk = { git = "https://github.com/Lightprotocol/light-protocol", branch = 
 light-compressed-account = { git = "https://github.com/Lightprotocol/light-protocol", branch = "jorrit/feat-opt-ctoken-mint-pinocchio", features = ["anchor"] }
 light-batched-merkle-tree = { git = "https://github.com/Lightprotocol/light-protocol", branch = "jorrit/feat-opt-ctoken-mint-pinocchio", features = ["solana"] }
 light-sdk-types = { git = "https://github.com/Lightprotocol/light-protocol", branch = "jorrit/feat-opt-ctoken-mint-pinocchio", features = ["anchor"] }
+delegation = { path = "../delegation", features = ["cpi"] }
 
 [dev-dependencies]
 light-client = { git = "https://github.com/Lightprotocol/light-protocol", branch = "jorrit/feat-opt-ctoken-mint-pinocchio" }

@@ -40,7 +40,6 @@ pub mod counter {
     use light_sdk_types::{
         cpi_context_write::CpiContextWriteAccounts, CpiAccountsConfig, LIGHT_SYSTEM_PROGRAM_ID,
     };
-
     use super::*;
 
     pub fn create_counter<'info>(
@@ -144,7 +143,10 @@ pub mod counter {
                 cpi_signer: LIGHT_CPI_SIGNER,
             };
             let data_hash = counter.hash::<Poseidon>().map_err(ProgramError::from)?;
-            msg!("Program id: {:?}", anchor_lang::prelude::Pubkey::new_from_array(LIGHT_CPI_SIGNER.program_id));
+            msg!(
+                "Program id: {:?}",
+                anchor_lang::prelude::Pubkey::new_from_array(LIGHT_CPI_SIGNER.program_id)
+            );
             let instruction = InstructionDataInvokeCpiWithReadOnly {
                 mode: 1u8,
                 bump: LIGHT_CPI_SIGNER.bump,
@@ -175,7 +177,7 @@ pub mod counter {
                 }],
                 output_compressed_accounts: vec![OutputCompressedAccountWithPackedContext {
                     compressed_account: CompressedAccount {
-                        owner: Pubkey::default().into(),
+                        owner: delegation::ID.into(),
                         //owner: LIGHT_CPI_SIGNER.program_id.into(),
                         lamports: 0,
                         address: Some(account_meta.address),
@@ -184,7 +186,7 @@ pub mod counter {
                         //     data_hash,
                         //     discriminator: CounterAccount::discriminator(),
                         // }),
-                        data: None
+                        data: None,
                     },
                     merkle_tree_index: account_meta.output_state_tree_index,
                 }],
@@ -225,38 +227,29 @@ pub mod counter {
             )
             .map_err(ProgramError::from)?;
         }
-        msg!(
-            "tree pubkeys {:?} ",
-            light_cpi_accounts.tree_pubkeys().unwrap()
-        );
-        let account_info = light_cpi_accounts.get_tree_account_info(1).unwrap();
 
-        let output_queue = BatchedQueueAccount::output_from_account_info(account_info).unwrap();
-        account_meta.tree_info.leaf_index = output_queue.batch_metadata.next_index as u32;
-        account_meta.tree_info.prove_by_index = true;
-        let pk = anchor_lang::prelude::Pubkey::default();
-        let counter = LightAccount::<'_, CounterAccount>::new_init(
-            &pk,
-            None,
-            account_meta.output_state_tree_index,
-        );
-        //
-        let cpi_inputs = CpiInputs {
-            proof,
-            account_infos: Some(vec![counter
-                .to_account_info()
-                .map_err(ProgramError::from)?]),
-            new_assigned_addresses: None,
-            cpi_context: Some(CompressedCpiContext {
-                set_context: false,
-                first_set_context: false,
-                cpi_context_account_index: 0,
-            }),
-            ..Default::default()
+        let counter = LightAccount::<'_, CounterAccount>::new_mut(
+            &crate::ID,
+            &account_meta,
+            CounterAccount {
+                owner: ctx.accounts.signer.key(),
+                value: counter_value,
+            },
+        ).map_err(ProgramError::from)?;
+
+        // CPI into the delegation program to set data
+        let cpi_accounts = delegation::cpi::accounts::Delegate {
+            signer: ctx.accounts.signer.to_account_info(),
         };
-        cpi_inputs
-            .invoke_light_system_program(light_cpi_accounts)
-            .map_err(ProgramError::from)?;
+        let cpi_program = ctx.accounts.delegation_program.to_account_info();
+        // let seeds: &[&[u8]] = &[
+        //     b"auth",
+        //     ctx.accounts.payer.key.as_ref(),
+        //     &[ctx.accounts.router_authority_bump],
+        // ];
+        // let signer = &[seeds];
+        let cpi_ctx = CpiContext::new(cpi_program, cpi_accounts);
+        delegation::cpi::delegate(cpi_ctx, proof, account_meta, counter.data(), counter.to_account_info().map_err(ProgramError::from)?)?;
         Ok(())
     }
 
@@ -382,6 +375,7 @@ pub enum CustomError {
 pub struct GenericAnchorAccounts<'info> {
     #[account(mut)]
     pub signer: Signer<'info>,
+    pub delegation_program: Program<'info, delegation::program::Delegation>,
 }
 
 // declared as event so that it is part of the idl.

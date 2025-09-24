@@ -1,11 +1,9 @@
 // #![cfg(feature = "test-sbf")]
 
-use std::time::Duration;
 use anchor_lang::{AnchorDeserialize, InstructionData, ToAccountMetas};
-use anchor_lang::idl::types::IdlType::Pubkey;
-use counter::{CounterAccount, LIGHT_CPI_SIGNER};
+use counter::CounterAccount;
 use light_client::indexer::{CompressedAccount, TreeInfo};
-use light_compressed_account::{address::derive_address, hash_to_bn254_field_size_be};
+use light_compressed_account::address::derive_address;
 use light_hasher::hash_to_field_size::hashv_to_bn254_field_size_be_const_array;
 use light_program_test::{
     program_test::LightProgramTest, AddressWithTree, Indexer, ProgramTestConfig, Rpc, RpcError,
@@ -14,16 +12,14 @@ use light_sdk::instruction::{
     account_meta::{CompressedAccountMeta, CompressedAccountMetaClose},
     PackedAccounts, SystemAccountMetaConfig,
 };
-use solana_pubkey::pubkey;
 use solana_sdk::{
     instruction::Instruction,
     signature::{Keypair, Signature, Signer},
 };
-use tokio::time::sleep;
 
 #[tokio::test]
-async fn test_counter() {
-    let config = ProgramTestConfig::new_v2(true, Some(vec![("counter", counter::ID)]));
+async fn test_counter_delegation() {
+    let config = ProgramTestConfig::new_v2(true, Some(vec![("counter", counter::ID), ("delegation", delegation::ID)]));
     let mut rpc = LightProgramTest::new(config).await.unwrap();
     let payer = rpc.get_payer().insecure_clone();
 
@@ -69,9 +65,6 @@ async fn test_counter() {
         .await
         .unwrap();
 
-    // Wait for the indexer to catch up.
-    sleep(Duration::from_secs(2)).await;
-
     // Check that the owner was changed.
     let compressed_account = rpc
         .get_compressed_account(address, None)
@@ -80,8 +73,7 @@ async fn test_counter() {
         .value;
 
     // Check that the owner of the counter is the creating program
-    assert_eq!(compressed_account.owner, anchor_lang::prelude::Pubkey::default());
-
+    assert_eq!(compressed_account.owner, delegation::ID);
 
     // // Check that it was incremented correctly.
     // let compressed_account = rpc
@@ -180,6 +172,7 @@ where
 
     let accounts = counter::accounts::GenericAnchorAccounts {
         signer: payer.pubkey(),
+        delegation_program: delegation::ID,
     };
 
     let (remaining_accounts_metas, _, _) = remaining_accounts.to_account_metas();
@@ -241,6 +234,7 @@ where
 
     let accounts = counter::accounts::GenericAnchorAccounts {
         signer: payer.pubkey(),
+        delegation_program: delegation::ID,
     };
 
     let (remaining_accounts_metas, _, _) = remaining_accounts.to_account_metas();
@@ -302,6 +296,7 @@ where
 
     let accounts = counter::accounts::GenericAnchorAccounts {
         signer: payer.pubkey(),
+        delegation_program: delegation::ID,
     };
 
     let (remaining_accounts_metas, _, _) = remaining_accounts.to_account_metas();
@@ -362,6 +357,7 @@ where
 
     let accounts = counter::accounts::GenericAnchorAccounts {
         signer: payer.pubkey(),
+        delegation_program: delegation::ID,
     };
 
     let (remaining_accounts_metas, _, _) = remaining_accounts.to_account_metas();
@@ -422,6 +418,7 @@ where
 
     let accounts = counter::accounts::GenericAnchorAccounts {
         signer: payer.pubkey(),
+        delegation_program: delegation::ID,
     };
 
     let (remaining_accounts_metas, _, _) = remaining_accounts.to_account_metas();

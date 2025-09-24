@@ -12,14 +12,14 @@ use light_sdk::{
     LightDiscriminator, LightHasher,
 };
 
-declare_id!("GRLu2hKaAiMbxpkAM1HeXzks9YeGuz18SEgXEizVvPqX");
+declare_id!("H3WD4CZ5GFxxJtqC8vNqHRPfepfRXGNVZeAFdEat9cgv");
 
 pub const LIGHT_CPI_SIGNER: CpiSigner =
-    derive_light_cpi_signer!("GRLu2hKaAiMbxpkAM1HeXzks9YeGuz18SEgXEizVvPqX");
+    derive_light_cpi_signer!("H3WD4CZ5GFxxJtqC8vNqHRPfepfRXGNVZeAFdEat9cgv");
 
 #[program]
 pub mod counter {
-
+    use anchor_lang::Event;
     use light_batched_merkle_tree::queue::BatchedQueueAccount;
     use light_compressed_account::{
         address::derive_address,
@@ -144,6 +144,7 @@ pub mod counter {
                 cpi_signer: LIGHT_CPI_SIGNER,
             };
             let data_hash = counter.hash::<Poseidon>().map_err(ProgramError::from)?;
+            msg!("Program id: {:?}", anchor_lang::prelude::Pubkey::new_from_array(LIGHT_CPI_SIGNER.program_id));
             let instruction = InstructionDataInvokeCpiWithReadOnly {
                 mode: 1u8,
                 bump: LIGHT_CPI_SIGNER.bump,
@@ -174,14 +175,16 @@ pub mod counter {
                 }],
                 output_compressed_accounts: vec![OutputCompressedAccountWithPackedContext {
                     compressed_account: CompressedAccount {
-                        owner: LIGHT_CPI_SIGNER.program_id.into(),
+                        owner: Pubkey::default().into(),
+                        //owner: LIGHT_CPI_SIGNER.program_id.into(),
                         lamports: 0,
                         address: Some(account_meta.address),
-                        data: Some(CompressedAccountData {
-                            data: vec![],
-                            data_hash,
-                            discriminator: CounterAccount::discriminator(),
-                        }),
+                        // data: Some(CompressedAccountData {
+                        //     data: vec![],
+                        //     data_hash,
+                        //     discriminator: CounterAccount::discriminator(),
+                        // }),
+                        data: None
                     },
                     merkle_tree_index: account_meta.output_state_tree_index,
                 }],
@@ -231,16 +234,13 @@ pub mod counter {
         let output_queue = BatchedQueueAccount::output_from_account_info(account_info).unwrap();
         account_meta.tree_info.leaf_index = output_queue.batch_metadata.next_index as u32;
         account_meta.tree_info.prove_by_index = true;
-        let counter = LightAccount::<'_, CounterAccount>::new_mut(
-            &crate::ID,
-            &account_meta,
-            CounterAccount {
-                owner: ctx.accounts.signer.key(),
-                value: counter_value,
-            },
-        )
-        .map_err(ProgramError::from)?;
-
+        let pk = anchor_lang::prelude::Pubkey::default();
+        let counter = LightAccount::<'_, CounterAccount>::new_init(
+            &pk,
+            None,
+            account_meta.output_state_tree_index,
+        );
+        //
         let cpi_inputs = CpiInputs {
             proof,
             account_infos: Some(vec![counter

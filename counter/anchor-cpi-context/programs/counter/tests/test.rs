@@ -1,7 +1,9 @@
 // #![cfg(feature = "test-sbf")]
 
+use std::time::Duration;
 use anchor_lang::{AnchorDeserialize, InstructionData, ToAccountMetas};
-use counter::CounterAccount;
+use anchor_lang::idl::types::IdlType::Pubkey;
+use counter::{CounterAccount, LIGHT_CPI_SIGNER};
 use light_client::indexer::{CompressedAccount, TreeInfo};
 use light_compressed_account::{address::derive_address, hash_to_bn254_field_size_be};
 use light_hasher::hash_to_field_size::hashv_to_bn254_field_size_be_const_array;
@@ -12,10 +14,12 @@ use light_sdk::instruction::{
     account_meta::{CompressedAccountMeta, CompressedAccountMetaClose},
     PackedAccounts, SystemAccountMetaConfig,
 };
+use solana_pubkey::pubkey;
 use solana_sdk::{
     instruction::Instruction,
     signature::{Keypair, Signature, Signer},
 };
+use tokio::time::sleep;
 
 #[tokio::test]
 async fn test_counter() {
@@ -57,10 +61,27 @@ async fn test_counter() {
     let counter = CounterAccount::deserialize(&mut &counter[..]).unwrap();
     assert_eq!(counter.value, 0);
 
+    // Check that the owner of the counter is the creating program
+    assert_eq!(compressed_account.owner, counter::ID);
+
     // Increment the counter.
-    increment_counter(&mut rpc, &payer, &compressed_account)
+    delegate_counter(&mut rpc, &payer, &compressed_account)
         .await
         .unwrap();
+
+    // Wait for the indexer to catch up.
+    sleep(Duration::from_secs(2)).await;
+
+    // Check that the owner was changed.
+    let compressed_account = rpc
+        .get_compressed_account(address, None)
+        .await
+        .unwrap()
+        .value;
+
+    // Check that the owner of the counter is the creating program
+    assert_eq!(compressed_account.owner, anchor_lang::prelude::Pubkey::default());
+
 
     // // Check that it was incremented correctly.
     // let compressed_account = rpc
@@ -178,7 +199,7 @@ where
 }
 
 #[allow(clippy::too_many_arguments)]
-async fn increment_counter<R>(
+async fn delegate_counter<R>(
     rpc: &mut R,
     payer: &Keypair,
     compressed_account: &CompressedAccount,

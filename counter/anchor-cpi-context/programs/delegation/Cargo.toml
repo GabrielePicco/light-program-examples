@@ -1,0 +1,27 @@
+[package]
+name = "delegation"
+version = "0.1.0"
+description = "Created with Anchor"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib", "lib"]
+name = "delegation"
+
+[features]
+default = []
+cpi = ["no-entrypoint"]
+no-entrypoint = []
+no-idl = []
+no-log-ix-name = []
+idl-build = ["anchor-lang/idl-build"]
+
+
+[dependencies]
+anchor-lang = "0.31.1"
+light-hasher = { git = "https://github.com/Lightprotocol/light-protocol", branch = "jorrit/feat-opt-ctoken-mint-pinocchio", features = ["solana"] }
+light-sdk = { git = "https://github.com/Lightprotocol/light-protocol", branch = "jorrit/feat-opt-ctoken-mint-pinocchio", features = ["anchor"] }
+light-compressed-account = { git = "https://github.com/Lightprotocol/light-protocol", branch = "jorrit/feat-opt-ctoken-mint-pinocchio", features = ["anchor"] }
+light-batched-merkle-tree = { git = "https://github.com/Lightprotocol/light-protocol", branch = "jorrit/feat-opt-ctoken-mint-pinocchio", features = ["solana"] }
+light-sdk-types = { git = "https://github.com/Lightprotocol/light-protocol", branch = "jorrit/feat-opt-ctoken-mint-pinocchio", features = ["anchor"] }
+

@@ -11,6 +11,15 @@ use light_sdk::{
     },
     LightDiscriminator, LightHasher,
 };
+use light_batched_merkle_tree::queue::BatchedQueueAccount;
+use light_compressed_account::instruction_data::cpi_context::CompressedCpiContext;
+use light_compressed_account::instruction_data::with_account_info::CompressedAccountInfo;
+use light_sdk_types::CpiAccountsConfig;
+use light_compressed_account::instruction_data::data::OutputCompressedAccountWithPackedContext;
+use light_compressed_account::instruction_data::with_readonly::InAccount;
+use light_sdk::cpi::{create_light_system_progam_instruction_invoke_cpi, invoke_light_system_program};
+use light_compressed_account::instruction_data::with_readonly::InstructionDataInvokeCpiWithReadOnly;
+use light_sdk::cpi::InvokeLightSystemProgram;
 
 declare_id!("DELeGr1ZdNJ6PK8zu9g4Zvw1H85Wgy3Up5Eh7uo9XDHZ");
 
@@ -19,21 +28,22 @@ pub const LIGHT_CPI_SIGNER: CpiSigner =
 
 #[program]
 pub mod delegation {
-    use light_batched_merkle_tree::queue::BatchedQueueAccount;
-    use light_compressed_account::instruction_data::cpi_context::CompressedCpiContext;
-    use light_compressed_account::instruction_data::with_account_info::CompressedAccountInfo;
-    use light_sdk_types::CpiAccountsConfig;
+    use light_compressed_account::instruction_data::data::{NewAddressParams, NewAddressParamsAssignedPacked};
+    use light_sdk::cpi::CpiAccountsSmall;
+    use light_sdk_types::address::AddressSeed;
     use super::*;
 
     pub fn delegate<'info>(
         ctx: Context<'_, '_, '_, 'info, Delegate<'info>>,
         proof: ValidityProof,
         account_meta: CompressedAccountMeta,
-        data: Vec<u8>,
-        compressed_account: CompressedAccountInfo
+        in_account: InAccount,
+        out_account: OutputCompressedAccountWithPackedContext,
+        address_tree_info: PackedAddressTreeInfo,
     ) -> Result<()> {
-        let mut account_meta = account_meta;
-        let light_cpi_accounts = CpiAccounts::new_with_config(
+        let mut out_account = out_account;
+
+        let light_cpi_accounts = CpiAccountsSmall::new_with_config(
             ctx.accounts.signer.as_ref(),
             ctx.remaining_accounts,
             CpiAccountsConfig {
@@ -43,39 +53,31 @@ pub mod delegation {
                 sol_pool_pda: false,
             },
         );
-        msg!("Greetings from: {:?}", ctx.program_id);
-        msg!(
-            "tree pubkeys {:?} ",
-            light_cpi_accounts.tree_pubkeys().unwrap()
-        );
-        let account_info = light_cpi_accounts.get_tree_account_info(1).unwrap();
 
-        let output_queue = BatchedQueueAccount::output_from_account_info(account_info).unwrap();
-        account_meta.tree_info.leaf_index = output_queue.batch_metadata.next_index as u32;
-        account_meta.tree_info.prove_by_index = true;
-        let pk = anchor_lang::prelude::Pubkey::default();
-        let counter = LightAccount::<'_, CounterAccount>::new_init(
-            &pk,
-            None,
-            account_meta.output_state_tree_index,
-        );
-        //
-        let cpi_inputs = CpiInputs {
-            proof,
-            account_infos: Some(vec![counter
-                .to_account_info()
-                .map_err(ProgramError::from)?]),
-            new_assigned_addresses: None,
-            cpi_context: Some(CompressedCpiContext {
-                set_context: false,
-                first_set_context: false,
-                cpi_context_account_index: 0,
-            }),
-            ..Default::default()
-        };
-        cpi_inputs
-            .invoke_light_system_program(light_cpi_accounts)
-            .map_err(ProgramError::from)?;
+        // Derive the address and set it
+        let tree_account_info = light_cpi_accounts.get_tree_account_info(1).unwrap();
+        let seed = AddressSeed(ctx.accounts.delegation_cpi_signer.key.to_bytes());
+        let address = light_sdk::address::v2::derive_address_from_seed(&seed, tree_account_info.key, &ID);
+        out_account.compressed_account.address = Some(address);
+
+        msg!("Cpi signer: {}", Pubkey::new_from_array(LIGHT_CPI_SIGNER.cpi_signer));
+        msg!("Cpi signer received: {}", ctx.accounts.delegation_cpi_signer.to_account_info().key);
+        let mut light_cpi_accounts = light_cpi_accounts.to_account_infos().to_vec();
+        light_cpi_accounts[1] = ctx.accounts.delegation_cpi_signer.to_account_info();
+        msg!("Light cpi accounts: {:?}", light_cpi_accounts.to_account_infos().iter().map(|ai| ai.key).collect::<Vec<_>>());
+        let new_address_params = address_tree_info.into_new_address_params_packed(seed.into());
+
+
+        InstructionDataInvokeCpiWithReadOnly::new(
+            LIGHT_CPI_SIGNER.program_id.into(),
+            LIGHT_CPI_SIGNER.bump,
+            proof.into(),
+        )
+            .mode_v2()
+            .with_input_compressed_accounts(vec![in_account])
+            .with_output_compressed_accounts(vec![out_account])
+            .with_new_address_params(vec![NewAddressParamsAssignedPacked::new(new_address_params, None)])
+            .invoke_execute_cpi_context(light_cpi_accounts.as_slice())?;
         Ok(())
     }
 }
@@ -84,4 +86,21 @@ pub mod delegation {
 pub struct Delegate<'info> {
     #[account(mut)]
     pub signer: Signer<'info>,
+    /// CHECK: delegation program
+    pub delegation_program: AccountInfo<'info>,
+    /// CHECK: cpi signer
+    pub delegation_cpi_signer: AccountInfo<'info>,
+    /// CHECK: caller cpi signer
+    // pub caller_cpi_signer: AccountInfo<'info>,
+    /// CHECK: light system program
+    pub light_system_program: AccountInfo<'info>,
 }
+
+#[event]
+#[derive(Clone, Debug, Default, LightDiscriminator, LightHasher)]
+pub struct CounterAccount {
+    #[hash]
+    pub owner: Pubkey,
+    pub value: u64,
+}
+

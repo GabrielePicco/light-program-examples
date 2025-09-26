@@ -55,10 +55,10 @@ pub mod delegation {
         );
 
         // Derive the address and set it
-        let tree_account_pk = pubkey!("amt2kaJA14v3urZbZvnc5v2np8jqvc4Z8zDep5wbtzx");
-        let seed = AddressSeed(ctx.accounts.delegation_cpi_signer.key.to_bytes());
-        let address = light_sdk::address::v2::derive_address_from_seed(&seed, &tree_account_pk, &ID);
-        msg!("test receiving address: {:?}", address);
+        // let tree_account_pk = pubkey!("amt2kaJA14v3urZbZvnc5v2np8jqvc4Z8zDep5wbtzx");
+        // let seed = AddressSeed(ctx.accounts.delegation_cpi_signer.key.to_bytes());
+        // let address = light_sdk::address::v2::derive_address_from_seed(&seed, &tree_account_pk, &ID);
+        // msg!("test receiving address: {:?}", address);
         // msg!("tree receiving account: {:?}", tree_account_info.key);
         //out_account.compressed_account.address = Some(address);
 
@@ -67,8 +67,11 @@ pub mod delegation {
         let mut light_cpi_accounts = light_cpi_accounts.to_account_infos().to_vec();
         light_cpi_accounts[1] = ctx.accounts.delegation_cpi_signer.to_account_info();
         msg!("Light cpi accounts: {:?}", light_cpi_accounts.to_account_infos().iter().map(|ai| ai.key).collect::<Vec<_>>());
-        let new_address_params = address_tree_info.into_new_address_params_packed(seed.into());
 
+        let tree_account_pk = pubkey!("amt2kaJA14v3urZbZvnc5v2np8jqvc4Z8zDep5wbtzx");
+        let seed = AddressSeed(ctx.accounts.delegation_cpi_signer.key.to_bytes());
+        let address = light_sdk::address::v2::derive_address_from_seed(&seed, &tree_account_pk, &ID);
+        let new_address_params = address_tree_info.into_new_address_params_packed(seed);
 
         InstructionDataInvokeCpiWithReadOnly::new(
             LIGHT_CPI_SIGNER.program_id.into(),
@@ -78,10 +81,15 @@ pub mod delegation {
             .mode_v2()
             .with_input_compressed_accounts(vec![in_account])
             .with_output_compressed_accounts(vec![out_account])
-            .with_new_address_params(vec![NewAddressParamsAssignedPacked::new(new_address_params, None)])
+            //.with_new_address_params(vec![NewAddressParamsAssignedPacked::new(new_address_params, None)])
             .invoke_execute_cpi_context(light_cpi_accounts.as_slice())?;
 
-        // Create the new account
+        // Create the new account, setting the expected address and set it
+        // let tree_account_pk = pubkey!("amt2kaJA14v3urZbZvnc5v2np8jqvc4Z8zDep5wbtzx");
+        // let seed = AddressSeed(ctx.accounts.delegation_cpi_signer.key.to_bytes());
+        // let address = light_sdk::address::v2::derive_address_from_seed(&seed, &tree_account_pk, &ID);
+        // msg!("test receiving address: {:?}", address);
+        //
         // let cpi_accounts = CpiAccounts::new(
         //     ctx.accounts.signer.as_ref(),
         //     ctx.remaining_accounts,

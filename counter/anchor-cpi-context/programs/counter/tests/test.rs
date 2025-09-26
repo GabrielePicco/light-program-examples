@@ -165,14 +165,27 @@ where
     println!("test calling address: {:?}", address);
 
     let rpc_result = rpc
-        .get_validity_proof(vec![hash], vec![AddressWithTree{address, tree: rpc.get_address_tree_v2().tree}], None)
+        //.get_validity_proof(vec![hash], vec![AddressWithTree{address, tree: rpc.get_address_tree_v2().tree}], None)
+        .get_validity_proof(vec![hash], vec![], None)
         .await?
         .value;
 
     let mut remaining_accounts = PackedAccounts::default();
     let packed_tree_accounts = rpc_result.pack_tree_infos(&mut remaining_accounts);
 
-   let address_tree_info = packed_tree_accounts.address_trees[0];
+    let rpc_result_creation = rpc
+        .get_validity_proof(
+            vec![],
+            vec![AddressWithTree {
+                address,
+                tree: rpc.get_address_tree_v2().tree,
+            }],
+            None,
+        )
+        .await?
+        .value;
+    let packed_tree_creation_accounts = rpc_result_creation.pack_tree_infos(&mut remaining_accounts);
+    let address_tree_info = packed_tree_creation_accounts.address_trees[0];
 
     let mut config = SystemAccountMetaConfig::new(counter::ID);
     config.cpi_context = rpc_result.accounts[0].tree_info.cpi_context;
@@ -193,7 +206,8 @@ where
     let instruction_data = counter::instruction::DelegateCounter {
         proof: rpc_result.proof,
         counter_value: counter_account.value,
-        account_meta,address_tree_info
+        account_meta,
+        address_tree_info
     };
 
     let accounts = counter::accounts::GenericAnchorAccounts {

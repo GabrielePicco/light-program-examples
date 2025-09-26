@@ -29,7 +29,7 @@ pub const LIGHT_CPI_SIGNER: CpiSigner =
 #[program]
 pub mod delegation {
     use light_compressed_account::instruction_data::data::{NewAddressParams, NewAddressParamsAssignedPacked};
-    use light_sdk::cpi::CpiAccountsSmall;
+    use light_sdk::cpi::{CpiAccountsSmall, WithLightAccount};
     use light_sdk_types::address::AddressSeed;
     use super::*;
 
@@ -73,6 +73,13 @@ pub mod delegation {
         let address = light_sdk::address::v2::derive_address_from_seed(&seed, &tree_account_pk, &ID);
         let new_address_params = address_tree_info.into_new_address_params_packed(seed);
 
+        let mut counter = LightAccount::<'_, CounterAccount>::new_init(
+            &ID,
+            Some(address),
+            account_meta.output_state_tree_index,
+        );
+        counter.value = 100;
+
         InstructionDataInvokeCpiWithReadOnly::new(
             LIGHT_CPI_SIGNER.program_id.into(),
             LIGHT_CPI_SIGNER.bump,
@@ -81,7 +88,8 @@ pub mod delegation {
             .mode_v2()
             .with_input_compressed_accounts(vec![in_account])
             .with_output_compressed_accounts(vec![out_account])
-            //.with_new_address_params(vec![NewAddressParamsAssignedPacked::new(new_address_params, None)])
+            .with_new_address_params(vec![NewAddressParamsAssignedPacked::new(new_address_params, Some(2))])
+            .with_light_account(counter).unwrap()
             .invoke_execute_cpi_context(light_cpi_accounts.as_slice())?;
 
         // Create the new account, setting the expected address and set it

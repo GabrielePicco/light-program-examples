@@ -85,7 +85,18 @@ async fn test_counter_delegation() {
     // Check that the data of the counter is the same.
     let counter = &compressed_account.data.as_ref().unwrap().data;
     let counter = CounterAccount::deserialize(&mut &counter[..]).unwrap();
-    assert_eq!(prev_counter_data, counter.data())
+    assert_eq!(prev_counter_data, counter.data());
+
+    // Get the new counter account
+    let address = light_sdk::address::v2::derive_address_from_seed(&AddressSeed(delegation::LIGHT_CPI_SIGNER.cpi_signer), &rpc.get_address_tree_v2().tree, &delegation::ID);
+    let new_compressed_account = rpc
+        .get_compressed_account(address, None)
+        .await
+        .unwrap()
+        .value;
+    let counter = &new_compressed_account.data.as_ref().unwrap().data;
+    let counter = CounterAccount::deserialize(&mut &counter[..]).unwrap();
+    assert_eq!(counter.value, 100);
 }
 
 async fn create_counter<R>(
@@ -165,26 +176,27 @@ where
     println!("test calling address: {:?}", address);
 
     let rpc_result = rpc
-        //.get_validity_proof(vec![hash], vec![AddressWithTree{address, tree: rpc.get_address_tree_v2().tree}], None)
-        .get_validity_proof(vec![hash], vec![], None)
+        .get_validity_proof(vec![hash], vec![AddressWithTree{address, tree: rpc.get_address_tree_v2().tree}], None)
+        //.get_validity_proof(vec![hash], vec![], None)
         .await?
         .value;
 
     let mut remaining_accounts = PackedAccounts::default();
     let packed_tree_accounts = rpc_result.pack_tree_infos(&mut remaining_accounts);
 
-    let rpc_result_creation = rpc
-        .get_validity_proof(
-            vec![],
-            vec![AddressWithTree {
-                address,
-                tree: rpc.get_address_tree_v2().tree,
-            }],
-            None,
-        )
-        .await?
-        .value;
-    let packed_tree_creation_accounts = rpc_result_creation.pack_tree_infos(&mut remaining_accounts);
+    // let rpc_result_creation = rpc
+    //     .get_validity_proof(
+    //         vec![],
+    //         vec![AddressWithTree {
+    //             address,
+    //             tree: rpc.get_address_tree_v2().tree,
+    //         }],
+    //         None,
+    //     )
+    //     .await?
+    //     .value;
+
+    let packed_tree_creation_accounts = rpc_result.pack_tree_infos(&mut remaining_accounts);
     let address_tree_info = packed_tree_creation_accounts.address_trees[0];
 
     let mut config = SystemAccountMetaConfig::new(counter::ID);

@@ -11,6 +11,20 @@ use light_sdk::{
     },
     LightDiscriminator, LightHasher,
 };
+use light_batched_merkle_tree::queue::BatchedQueueAccount;
+use light_compressed_account::{
+    address::derive_address,
+    instruction_data::{
+        with_readonly::{InstructionDataInvokeCpiWithReadOnly},
+    },
+};
+use light_hasher::{
+    hash_to_field_size::hashv_to_bn254_field_size_be_const_array,
+};
+use light_sdk::cpi::{CpiAccountsSmall, InvokeLightSystemProgram};
+use light_sdk_types::{
+    cpi_context_write::CpiContextWriteAccounts, CpiAccountsConfig,
+};
 
 declare_id!("H3WD4CZ5GFxxJtqC8vNqHRPfepfRXGNVZeAFdEat9cgv");
 
@@ -20,22 +34,9 @@ pub const LIGHT_CPI_SIGNER: CpiSigner =
 #[program]
 pub mod counter {
     use super::*;
-    use light_batched_merkle_tree::queue::BatchedQueueAccount;
-    use light_compressed_account::{
-        address::derive_address,
-        instruction_data::{
-            with_readonly::{InstructionDataInvokeCpiWithReadOnly},
-        },
-    };
-    use light_hasher::{
-        hash_to_field_size::hashv_to_bn254_field_size_be_const_array,
-    };
-    use light_sdk::cpi::{CpiAccountsSmall, InvokeLightSystemProgram};
+
     use light_sdk::{
         light_account_checks::AccountInfoTrait,
-    };
-    use light_sdk_types::{
-        cpi_context_write::CpiContextWriteAccounts, CpiAccountsConfig,
     };
 
     pub fn create_counter<'info>(
@@ -44,11 +45,7 @@ pub mod counter {
         address_tree_info: PackedAddressTreeInfo,
         output_state_tree_index: u8,
     ) -> Result<()> {
-        // LightAccount::new_init will create an account with empty output state (no input state).
-        // Modifying the account will modify the output state that when converted to_account_info()
-        // is hashed with poseidon hashes, serialized with borsh
-        // and created with invoke_light_system_program by invoking the light-system-program.
-        // The hashing scheme is the account structure derived with LightHasher.
+
         let cpi_accounts = CpiAccounts::new(
             ctx.accounts.signer.as_ref(),
             ctx.remaining_accounts,
@@ -161,51 +158,7 @@ pub mod counter {
             .invoke_write_to_cpi_context_first(&cpi_context_accounts.to_account_infos())?;
         }
 
-        // let tree_account_info = light_cpi_accounts.get_tree_account_info(1).unwrap();
-        // let output_queue = BatchedQueueAccount::output_from_account_info(tree_account_info).unwrap();
-        // account_meta.tree_info.leaf_index = output_queue.batch_metadata.next_index as u32;
-        // account_meta.tree_info.prove_by_index = true;
-        //
-        // let counter = LightAccount::<'_, CounterAccount>::new_mut(
-        //     &delegation::ID,
-        //     &account_meta,
-        //     CounterAccount {
-        //         owner: ctx.accounts.signer.key(),
-        //         value: counter_value,
-        //     },
-        // ).map_err(ProgramError::from)?;
-        //
-        // let counter_data = counter.data();
-        // let counter_account_info = counter.to_account_info().map_err(ProgramError::from)?;
-
-        // Use the context
-        // let account_info = light_cpi_accounts.get_tree_account_info(1).unwrap();
-        // let output_queue = BatchedQueueAccount::output_from_account_info(account_info).unwrap();
-        // account_meta.tree_info.leaf_index = output_queue.batch_metadata.next_index as u32;
-        // account_meta.tree_info.prove_by_index = true;
-        // let pk = anchor_lang::prelude::Pubkey::default();
-        // let counter = LightAccount::<'_, CounterAccount>::new_init(
-        //     &pk,
-        //     None,
-        //     account_meta.output_state_tree_index,
-        // );
-        // let cpi_inputs = CpiInputs {
-        //     proof,
-        //     account_infos: Some(vec![counter.to_account_info().map_err(ProgramError::from)?]),
-        //     new_assigned_addresses: None,
-        //     cpi_context: Some(CompressedCpiContext {
-        //         set_context: false,
-        //         first_set_context: false,
-        //         cpi_context_account_index: 0,
-        //     }),
-        //     ..Default::default()
-        // };
-        // cpi_inputs
-        //     .invoke_light_system_program_small(light_cpi_accounts.clone())
-        //     .map_err(ProgramError::from)?;
-
         // Prepare the new counter
-
         let account_info = light_cpi_accounts.get_tree_account_info(1).unwrap();
         let output_queue = BatchedQueueAccount::output_from_account_info(account_info).unwrap();
         account_meta.tree_info.leaf_index = output_queue.batch_metadata.next_index as u32;
@@ -228,7 +181,7 @@ pub mod counter {
             .to_output_compressed_account_with_packed_context(None)
             .map_err(ProgramError::from)?
             .unwrap();
-        msg!("out_account {:?}", out_account);
+
         // CPI into the delegation program to set data
         let cpi_accounts = delegation::cpi::accounts::Delegate {
             signer: ctx.accounts.signer.to_account_info(),

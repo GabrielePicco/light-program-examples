@@ -137,7 +137,7 @@ pub mod counter {
             };
             msg!(
                 "Program id: {:?}",
-                anchor_lang::prelude::Pubkey::new_from_array(LIGHT_CPI_SIGNER.program_id)
+                Pubkey::new_from_array(LIGHT_CPI_SIGNER.program_id)
             );
             let in_account = counter
                 .to_in_account()
@@ -158,7 +158,7 @@ pub mod counter {
             .invoke_write_to_cpi_context_first(&cpi_context_accounts.to_account_infos())?;
         }
 
-        // Prepare the new counter
+        // Prepare the account for delegation
         let account_info = light_cpi_accounts.get_tree_account_info(1).unwrap();
         let output_queue = BatchedQueueAccount::output_from_account_info(account_info).unwrap();
         account_meta.tree_info.leaf_index = output_queue.batch_metadata.next_index as u32;
@@ -182,7 +182,7 @@ pub mod counter {
             .map_err(ProgramError::from)?
             .unwrap();
 
-        // CPI into the delegation program to set data
+        // CPI into the delegation program
         let cpi_accounts = delegation::cpi::accounts::Delegate {
             signer: ctx.accounts.signer.to_account_info(),
             delegation_program: ctx.accounts.delegation_program.to_account_info(),

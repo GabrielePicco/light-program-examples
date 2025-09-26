@@ -20,10 +20,17 @@ use solana_sdk::{
     instruction::Instruction,
     signature::{Keypair, Signature, Signer},
 };
+use delegation::CDelegationRecord;
 
 #[tokio::test]
 async fn test_counter_delegation() {
-    let mut config = ProgramTestConfig::new_v2(true, Some(vec![("counter", counter::ID), ("delegation", delegation::ID)]));
+    let mut config = ProgramTestConfig::new_v2(
+        true,
+        Some(vec![
+            ("counter", counter::ID),
+            ("delegation", delegation::ID),
+        ]),
+    );
     config.log_light_protocol_events = true;
     let mut rpc = LightProgramTest::new(config).await.unwrap();
     let payer = rpc.get_payer().insecure_clone();
@@ -72,12 +79,7 @@ async fn test_counter_delegation() {
         .await
         .unwrap()
         .value;
-    // let compressed_account = rpc
-    //     .get_compressed_accounts_by_owner(&delegation::ID, None, None)
-    //     .await
-    //     .unwrap()
-    //     .value;
-    // let compressed_account = compressed_account.items.first().unwrap();
+
     // Check that the owner of the counter is the creating program
     assert_eq!(compressed_account.owner, delegation::ID);
     println!("compressed_account {:?}", compressed_account);
@@ -88,15 +90,19 @@ async fn test_counter_delegation() {
     assert_eq!(prev_counter_data, counter.data());
 
     // Get the new counter account
-    let address = light_sdk::address::v2::derive_address_from_seed(&AddressSeed(delegation::LIGHT_CPI_SIGNER.cpi_signer), &rpc.get_address_tree_v2().tree, &delegation::ID);
+    let address = light_sdk::address::v2::derive_address_from_seed(
+        &AddressSeed(delegation::LIGHT_CPI_SIGNER.cpi_signer),
+        &rpc.get_address_tree_v2().tree,
+        &delegation::ID,
+    );
     let new_compressed_account = rpc
         .get_compressed_account(address, None)
         .await
         .unwrap()
         .value;
-    let counter = &new_compressed_account.data.as_ref().unwrap().data;
-    let counter = CounterAccount::deserialize(&mut &counter[..]).unwrap();
-    assert_eq!(counter.value, 100);
+    let compressed_account_data = &new_compressed_account.data.as_ref().unwrap().data;
+    let compressed_account = CDelegationRecord::deserialize(&mut &compressed_account_data[..]).unwrap();
+    assert_eq!(compressed_account.data, vec![1]);
 }
 
 async fn create_counter<R>(
@@ -170,13 +176,24 @@ where
 {
     let hash = compressed_account.hash;
 
-    let address = light_sdk::address::v2::derive_address_from_seed(&AddressSeed(delegation::LIGHT_CPI_SIGNER.cpi_signer), &rpc.get_address_tree_v2().tree, &delegation::ID);
+    let address = light_sdk::address::v2::derive_address_from_seed(
+        &AddressSeed(delegation::LIGHT_CPI_SIGNER.cpi_signer),
+        &rpc.get_address_tree_v2().tree,
+        &delegation::ID,
+    );
     msg!("tree calling tree: {:?}", &rpc.get_address_tree_v2().tree);
 
     println!("test calling address: {:?}", address);
 
     let rpc_result = rpc
-        .get_validity_proof(vec![hash], vec![AddressWithTree{address, tree: rpc.get_address_tree_v2().tree}], None)
+        .get_validity_proof(
+            vec![hash],
+            vec![AddressWithTree {
+                address,
+                tree: rpc.get_address_tree_v2().tree,
+            }],
+            None,
+        )
         //.get_validity_proof(vec![hash], vec![], None)
         .await?
         .value;
@@ -201,7 +218,9 @@ where
 
     let mut config = SystemAccountMetaConfig::new(counter::ID);
     config.cpi_context = rpc_result.accounts[0].tree_info.cpi_context;
-    remaining_accounts.add_system_accounts_small(config).unwrap();
+    remaining_accounts
+        .add_system_accounts_small(config)
+        .unwrap();
 
     let counter_account =
         CounterAccount::deserialize(&mut compressed_account.data.as_ref().unwrap().data.as_slice())
@@ -219,7 +238,7 @@ where
         proof: rpc_result.proof,
         counter_value: counter_account.value,
         account_meta,
-        address_tree_info
+        address_tree_info,
     };
 
     let accounts = counter::accounts::GenericAnchorAccounts {

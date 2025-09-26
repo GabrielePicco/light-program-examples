@@ -19,29 +19,24 @@ pub const LIGHT_CPI_SIGNER: CpiSigner =
 
 #[program]
 pub mod counter {
-    use anchor_lang::Event;
+    use super::*;
     use light_batched_merkle_tree::queue::BatchedQueueAccount;
     use light_compressed_account::{
         address::derive_address,
-        compressed_account::{CompressedAccount, CompressedAccountData},
         instruction_data::{
-            cpi_context::CompressedCpiContext,
-            data::OutputCompressedAccountWithPackedContext,
-            with_readonly::{InAccount, InstructionDataInvokeCpiWithReadOnly},
+            with_readonly::{InstructionDataInvokeCpiWithReadOnly},
         },
     };
     use light_hasher::{
-        hash_to_field_size::hashv_to_bn254_field_size_be_const_array, DataHasher, Poseidon,
-    };
-    use light_sdk::{
-        cpi::invoke_light_system_program, instruction::PackedMerkleContext,
-        light_account_checks::AccountInfoTrait,
+        hash_to_field_size::hashv_to_bn254_field_size_be_const_array,
     };
     use light_sdk::cpi::{CpiAccountsSmall, InvokeLightSystemProgram};
-    use light_sdk_types::{
-        cpi_context_write::CpiContextWriteAccounts, CpiAccountsConfig, LIGHT_SYSTEM_PROGRAM_ID,
+    use light_sdk::{
+        light_account_checks::AccountInfoTrait,
     };
-    use super::*;
+    use light_sdk_types::{
+        cpi_context_write::CpiContextWriteAccounts, CpiAccountsConfig,
+    };
 
     pub fn create_counter<'info>(
         ctx: Context<'_, '_, '_, 'info, GenericAnchorAccounts<'info>>,
@@ -63,7 +58,8 @@ pub mod counter {
         let seed = hashv_to_bn254_field_size_be_const_array::<3>(&[
             b"counter".as_slice(),
             ctx.accounts.signer.pubkey().as_ref(),
-        ]).unwrap();
+        ])
+        .unwrap();
         msg!("seed {:?}", seed);
         msg!(
             "cpi_accounts.tree_pubkeys().unwrap()
@@ -132,7 +128,8 @@ pub mod counter {
                     owner: ctx.accounts.signer.key(),
                     value: counter_value,
                 },
-            ).map_err(ProgramError::from)?;
+            )
+            .map_err(ProgramError::from)?;
 
             msg!("invoke");
             let cpi_context_accounts = CpiContextWriteAccounts {
@@ -149,9 +146,7 @@ pub mod counter {
                 .to_in_account()
                 .ok_or(ProgramError::InvalidAccountData)?;
             let mut out_account = counter
-                .to_output_compressed_account_with_packed_context(Some(
-                    delegation::ID,
-                ))
+                .to_output_compressed_account_with_packed_context(Some(delegation::ID))
                 .map_err(ProgramError::from)?
                 .ok_or(ProgramError::InvalidAccountData)?;
             out_account.compressed_account.data = None;
@@ -160,10 +155,10 @@ pub mod counter {
                 LIGHT_CPI_SIGNER.bump,
                 None,
             )
-                .mode_v2()
-                .with_input_compressed_accounts(vec![in_account])
-                .with_output_compressed_accounts(vec![out_account])
-                .invoke_write_to_cpi_context_first(&cpi_context_accounts.to_account_infos())?;
+            .mode_v2()
+            .with_input_compressed_accounts(vec![in_account])
+            .with_output_compressed_accounts(vec![out_account])
+            .invoke_write_to_cpi_context_first(&cpi_context_accounts.to_account_infos())?;
         }
 
         // let tree_account_info = light_cpi_accounts.get_tree_account_info(1).unwrap();
@@ -222,13 +217,17 @@ pub mod counter {
                 owner: ctx.accounts.signer.key(),
                 value: counter_value,
             },
-        ).map_err(ProgramError::from)?;
+        )
+        .map_err(ProgramError::from)?;
         let mut in_account = counter
             .to_in_account()
             .ok_or(ProgramError::InvalidAccountData)?;
         in_account.discriminator = [0u8; 8];
         in_account.data_hash = [0u8; 32];
-        let out_account = counter.to_output_compressed_account_with_packed_context(None).map_err(ProgramError::from)?.unwrap();
+        let out_account = counter
+            .to_output_compressed_account_with_packed_context(None)
+            .map_err(ProgramError::from)?
+            .unwrap();
         msg!("out_account {:?}", out_account);
         // CPI into the delegation program to set data
         let cpi_accounts = delegation::cpi::accounts::Delegate {
@@ -241,7 +240,13 @@ pub mod counter {
         let cpi_program = ctx.accounts.delegation_program.to_account_info();
         let cpi_ctx = CpiContext::new(cpi_program, cpi_accounts);
         let cpi_ctx = cpi_ctx.with_remaining_accounts(light_cpi_accounts.to_account_infos().into());
-        delegation::cpi::delegate(cpi_ctx, proof, account_meta, in_account, out_account,         address_tree_info
+        delegation::cpi::delegate(
+            cpi_ctx,
+            proof,
+            account_meta,
+            in_account,
+            out_account,
+            address_tree_info,
         )?;
         Ok(())
     }
@@ -260,7 +265,7 @@ pub mod counter {
                 value: counter_value,
             },
         )
-            .map_err(ProgramError::from)?;
+        .map_err(ProgramError::from)?;
 
         counter.value = counter.value.checked_sub(1).ok_or(CustomError::Underflow)?;
 
@@ -296,7 +301,7 @@ pub mod counter {
                 value: counter_value,
             },
         )
-            .map_err(ProgramError::from)?;
+        .map_err(ProgramError::from)?;
 
         counter.value = 0;
 
@@ -334,7 +339,7 @@ pub mod counter {
                 value: counter_value,
             },
         )
-            .map_err(ProgramError::from)?;
+        .map_err(ProgramError::from)?;
 
         let light_cpi_accounts = CpiAccounts::new(
             ctx.accounts.signer.as_ref(),

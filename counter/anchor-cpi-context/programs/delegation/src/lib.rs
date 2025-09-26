@@ -55,10 +55,12 @@ pub mod delegation {
         );
 
         // Derive the address and set it
-        let tree_account_info = light_cpi_accounts.get_tree_account_info(1).unwrap();
+        let tree_account_pk = pubkey!("amt2kaJA14v3urZbZvnc5v2np8jqvc4Z8zDep5wbtzx");
         let seed = AddressSeed(ctx.accounts.delegation_cpi_signer.key.to_bytes());
-        let address = light_sdk::address::v2::derive_address_from_seed(&seed, tree_account_info.key, &ID);
-        out_account.compressed_account.address = Some(address);
+        let address = light_sdk::address::v2::derive_address_from_seed(&seed, &tree_account_pk, &ID);
+        msg!("test receiving address: {:?}", address);
+        // msg!("tree receiving account: {:?}", tree_account_info.key);
+        //out_account.compressed_account.address = Some(address);
 
         msg!("Cpi signer: {}", Pubkey::new_from_array(LIGHT_CPI_SIGNER.cpi_signer));
         msg!("Cpi signer received: {}", ctx.accounts.delegation_cpi_signer.to_account_info().key);
@@ -78,6 +80,32 @@ pub mod delegation {
             .with_output_compressed_accounts(vec![out_account])
             .with_new_address_params(vec![NewAddressParamsAssignedPacked::new(new_address_params, None)])
             .invoke_execute_cpi_context(light_cpi_accounts.as_slice())?;
+
+        // Create the new account
+        // let cpi_accounts = CpiAccounts::new(
+        //     ctx.accounts.signer.as_ref(),
+        //     ctx.remaining_accounts,
+        //     crate::LIGHT_CPI_SIGNER,
+        // );
+        // let new_address_params = address_tree_info.into_new_address_params_packed(seed);
+        // let mut counter = LightAccount::<'_, CounterAccount>::new_init(
+        //     &ID,
+        //     Some(address),
+        //     account_meta.output_state_tree_index,
+        // );
+        // counter.owner = ctx.accounts.signer.key();
+        // counter.value = 0;
+        // let cpi = CpiInputs::new_with_address(
+        //     proof,
+        //     vec![counter.to_account_info().map_err(ProgramError::from)?],
+        //     vec![new_address_params],
+        // );
+        // let bump = cpi_accounts.bump();
+        // let mut account_infos = cpi_accounts.to_account_infos();
+        // account_infos.push(ctx.accounts.noop_program.clone());
+        // account_infos.push(ctx.accounts.delegation_cpi_signer.clone());
+        // let instruction = create_light_system_progam_instruction_invoke_cpi(cpi, cpi_accounts).map_err(ProgramError::from)?;
+        // invoke_light_system_program(account_infos.as_slice(), instruction, bump).map_err(ProgramError::from)?;
         Ok(())
     }
 }
@@ -94,6 +122,8 @@ pub struct Delegate<'info> {
     // pub caller_cpi_signer: AccountInfo<'info>,
     /// CHECK: light system program
     pub light_system_program: AccountInfo<'info>,
+    /// CHECK: noop program
+    pub noop_program: AccountInfo<'info>,
 }
 
 #[event]

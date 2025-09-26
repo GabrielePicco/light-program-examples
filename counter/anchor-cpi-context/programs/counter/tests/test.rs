@@ -1,8 +1,9 @@
 // #![cfg(feature = "test-sbf")]
 
+use anchor_lang::prelude::msg;
 use anchor_lang::{AnchorDeserialize, Event, InstructionData, ToAccountMetas};
 use counter::CounterAccount;
-use light_client::indexer::{Address, CompressedAccount, TreeInfo};
+use light_client::indexer::{CompressedAccount, TreeInfo};
 use light_compressed_account::address::derive_address;
 use light_hasher::hash_to_field_size::hashv_to_bn254_field_size_be_const_array;
 use light_program_test::{
@@ -13,12 +14,12 @@ use light_sdk::instruction::{
     PackedAccounts, SystemAccountMetaConfig,
 };
 use light_sdk_types::address::AddressSeed;
+use light_sdk_types::NOOP_PROGRAM_ID;
 use solana_pubkey::Pubkey;
 use solana_sdk::{
     instruction::Instruction,
     signature::{Keypair, Signature, Signer},
 };
-use delegation::ID;
 
 #[tokio::test]
 async fn test_counter_delegation() {
@@ -33,16 +34,11 @@ async fn test_counter_delegation() {
         payer.pubkey().as_ref(),
     ])
     .unwrap();
-    println!("seed {:?}", seed);
 
     let address = derive_address(
         &seed,
         &address_tree_info.tree.to_bytes(),
         &counter::ID.to_bytes(),
-    );
-    println!(
-        "address_tree_info.tree.to_bytes() {:?}",
-        address_tree_info.tree.to_bytes()
     );
 
     // Create the counter.
@@ -133,6 +129,7 @@ where
         signer: payer.pubkey(),
         delegation_program: delegation::ID,
         delegation_cpi_signer: Pubkey::new_from_array(delegation::LIGHT_CPI_SIGNER.cpi_signer),
+        noop: Pubkey::new_from_array(NOOP_PROGRAM_ID),
     };
 
     let (remaining_accounts_metas, _, _) = remaining_accounts.to_account_metas();
@@ -162,7 +159,10 @@ where
 {
     let hash = compressed_account.hash;
 
-    let address = light_sdk::address::v2::derive_address_from_seed(&AddressSeed(delegation::LIGHT_CPI_SIGNER.cpi_signer), &rpc.get_address_tree_v2().tree, &ID);
+    let address = light_sdk::address::v2::derive_address_from_seed(&AddressSeed(delegation::LIGHT_CPI_SIGNER.cpi_signer), &rpc.get_address_tree_v2().tree, &delegation::ID);
+    msg!("tree calling tree: {:?}", &rpc.get_address_tree_v2().tree);
+
+    println!("test calling address: {:?}", address);
 
     let rpc_result = rpc
         .get_validity_proof(vec![hash], vec![AddressWithTree{address, tree: rpc.get_address_tree_v2().tree}], None)
@@ -170,9 +170,7 @@ where
         .value;
 
     let mut remaining_accounts = PackedAccounts::default();
-    let packed_tree_accounts = rpc_result
-        .pack_tree_infos(&mut remaining_accounts)
-       ;
+    let packed_tree_accounts = rpc_result.pack_tree_infos(&mut remaining_accounts);
 
    let address_tree_info = packed_tree_accounts.address_trees[0];
 
@@ -184,10 +182,12 @@ where
         CounterAccount::deserialize(&mut compressed_account.data.as_ref().unwrap().data.as_slice())
             .unwrap();
 
+    let packed_state_tree = packed_tree_accounts.state_trees.unwrap();
+
     let account_meta = CompressedAccountMeta {
-        tree_info: packed_tree_accounts.packed_tree_infos[0],
+        tree_info: packed_state_tree.packed_tree_infos[0],
         address: compressed_account.address.unwrap(),
-        output_state_tree_index: packed_tree_accounts.output_tree_index,
+        output_state_tree_index: packed_state_tree.output_tree_index,
     };
 
     let instruction_data = counter::instruction::DelegateCounter {
@@ -200,6 +200,7 @@ where
         signer: payer.pubkey(),
         delegation_program: delegation::ID,
         delegation_cpi_signer: Pubkey::new_from_array(delegation::LIGHT_CPI_SIGNER.cpi_signer),
+        noop: Pubkey::new_from_array(NOOP_PROGRAM_ID),
     };
 
     let (remaining_accounts_metas, _, _) = remaining_accounts.to_account_metas();
@@ -263,6 +264,7 @@ where
         signer: payer.pubkey(),
         delegation_program: delegation::ID,
         delegation_cpi_signer: Pubkey::new_from_array(delegation::LIGHT_CPI_SIGNER.cpi_signer),
+        noop: Pubkey::new_from_array(NOOP_PROGRAM_ID),
     };
 
     let (remaining_accounts_metas, _, _) = remaining_accounts.to_account_metas();
@@ -325,6 +327,7 @@ where
         signer: payer.pubkey(),
         delegation_program: delegation::ID,
         delegation_cpi_signer: Pubkey::new_from_array(delegation::LIGHT_CPI_SIGNER.cpi_signer),
+        noop: Pubkey::new_from_array(NOOP_PROGRAM_ID),
     };
 
     let (remaining_accounts_metas, _, _) = remaining_accounts.to_account_metas();
@@ -387,6 +390,7 @@ where
         signer: payer.pubkey(),
         delegation_program: delegation::ID,
         delegation_cpi_signer: Pubkey::new_from_array(delegation::LIGHT_CPI_SIGNER.cpi_signer),
+        noop: Pubkey::new_from_array(NOOP_PROGRAM_ID),
     };
 
     let (remaining_accounts_metas, _, _) = remaining_accounts.to_account_metas();

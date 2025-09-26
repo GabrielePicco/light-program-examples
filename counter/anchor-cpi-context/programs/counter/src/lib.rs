@@ -183,7 +183,7 @@ pub mod counter {
         // let counter_data = counter.data();
         // let counter_account_info = counter.to_account_info().map_err(ProgramError::from)?;
 
-        // // Use the context
+        // Use the context
         // let account_info = light_cpi_accounts.get_tree_account_info(1).unwrap();
         // let output_queue = BatchedQueueAccount::output_from_account_info(account_info).unwrap();
         // account_meta.tree_info.leaf_index = output_queue.batch_metadata.next_index as u32;
@@ -206,7 +206,7 @@ pub mod counter {
         //     ..Default::default()
         // };
         // cpi_inputs
-        //     .invoke_light_system_program(light_cpi_accounts.clone())
+        //     .invoke_light_system_program_small(light_cpi_accounts.clone())
         //     .map_err(ProgramError::from)?;
 
         // Prepare the new counter
@@ -235,8 +235,8 @@ pub mod counter {
             signer: ctx.accounts.signer.to_account_info(),
             delegation_program: ctx.accounts.delegation_program.to_account_info(),
             delegation_cpi_signer: ctx.accounts.delegation_cpi_signer.to_account_info(),
-            light_system_program:ctx.remaining_accounts[0].to_account_info(),
-            // caller_cpi_signer: crate:: LIGHT_CPI_SIGNER.to_account_info(),
+            light_system_program: ctx.remaining_accounts[0].to_account_info(),
+            noop_program: ctx.accounts.noop.to_account_info(),
         };
         let cpi_program = ctx.accounts.delegation_program.to_account_info();
         let cpi_ctx = CpiContext::new(cpi_program, cpi_accounts);
@@ -371,6 +371,8 @@ pub struct GenericAnchorAccounts<'info> {
     pub delegation_program: Program<'info, delegation::program::Delegation>,
     /// CHECK: This is not dangerous because we don't read or write from this account
     pub delegation_cpi_signer: AccountInfo<'info>,
+    /// CHECK: The noop program
+    pub noop: AccountInfo<'info>,
 }
 
 // declared as event so that it is part of the idl.

@@ -31,7 +31,7 @@ async fn test_counter_delegation() {
             ("delegation", delegation::ID),
         ]),
     );
-    // config.log_light_protocol_events = true;
+    config.log_light_protocol_events = true;
     let mut rpc = LightProgramTest::new(config).await.unwrap();
     let payer = rpc.get_payer().insecure_clone();
 
@@ -90,21 +90,23 @@ async fn test_counter_delegation() {
     assert_eq!(prev_counter_data, counter.data());
 
     // Get the new counter account, deriving the address from mappedPDA
-    let address = light_sdk::address::v2::derive_address_from_seed(
-        &AddressSeed(delegation::LIGHT_CPI_SIGNER.cpi_signer),
+    let counter_pda = Pubkey::find_program_address(&[b"counter", payer.pubkey().as_ref()], &counter::ID).0;
+    let cda_address = light_sdk::address::v2::derive_address_from_seed(
+        &AddressSeed(counter_pda.to_bytes()),
         &rpc.get_address_tree_v2().tree,
         &delegation::ID,
     );
     let new_compressed_account = rpc
-        .get_compressed_account(address, None)
+        .get_compressed_account(cda_address, None)
         .await
         .unwrap()
         .value;
     let compressed_account_data = &new_compressed_account.data.as_ref().unwrap().data;
 
-    // Confirm that the CDelegationRecord has expected data
+    // Confirm that the CDelegationRecord has expected data and the counter data is unchanged
     let compressed_account = CDelegationRecord::deserialize(&mut &compressed_account_data[..]).unwrap();
-    //assert_eq!(compressed_account.data, vec![1]);
+    let counter = CounterAccount::deserialize(&mut &compressed_account.data[..]).unwrap();
+    assert_eq!(prev_counter_data, counter.data());
 }
 
 async fn create_counter<R>(
@@ -178,8 +180,10 @@ where
 {
     let hash = compressed_account.hash;
 
+    let counter_pda = Pubkey::find_program_address(&[b"counter", payer.pubkey().as_ref()], &counter::ID).0;
+
     let address = light_sdk::address::v2::derive_address_from_seed(
-        &AddressSeed(delegation::LIGHT_CPI_SIGNER.cpi_signer),
+        &AddressSeed(counter_pda.to_bytes()),
         &rpc.get_address_tree_v2().tree,
         &delegation::ID,
     );
@@ -229,7 +233,7 @@ where
 
     let accounts = counter::accounts::GenericAnchorAccounts {
         signer: payer.pubkey(),
-        counter_pda_account: Pubkey::find_program_address(&[b"counter", payer.pubkey().as_ref()], &counter::ID).0,
+        counter_pda_account: counter_pda,
         delegation_program: delegation::ID,
         delegation_cpi_signer: Pubkey::new_from_array(delegation::LIGHT_CPI_SIGNER.cpi_signer),
     };

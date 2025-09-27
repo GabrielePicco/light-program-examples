@@ -33,7 +33,6 @@ pub const LIGHT_CPI_SIGNER: CpiSigner =
 
 #[program]
 pub mod counter {
-    use light_compressed_account::instruction_data::data::ReadOnlyAddress;
     use super::*;
 
     pub fn create_counter<'info>(
@@ -76,7 +75,6 @@ pub mod counter {
         );
         cpi.invoke_light_system_program(cpi_accounts)
             .map_err(ProgramError::from)?;
-
         Ok(())
     }
 
@@ -154,7 +152,7 @@ pub mod counter {
         let out_account = counter
             .to_output_compressed_account_with_packed_context(None)
             .map_err(ProgramError::from)?
-            .unwrap();
+            .ok_or(ProgramError::InvalidAccountData)?;
 
         // CPI into the delegation program
         {

@@ -6,21 +6,14 @@ use light_compressed_account::instruction_data::data::OutputCompressedAccountWit
 use light_compressed_account::instruction_data::with_readonly::InAccount;
 use light_compressed_account::instruction_data::with_readonly::InstructionDataInvokeCpiWithReadOnly;
 use light_sdk::cpi::InvokeLightSystemProgram;
-use light_sdk::{
-    account::LightAccount,
-    cpi::{CpiSigner},
-    derive_light_cpi_signer,
-    instruction::{
-        account_meta::{CompressedAccountMeta},
-        PackedAddressTreeInfo, ValidityProof,
-    },
-    LightDiscriminator,
-};
+use light_sdk::{account::LightAccount, cpi::{CpiSigner}, derive_light_cpi_signer, instruction::{
+    account_meta::{CompressedAccountMeta},
+    PackedAddressTreeInfo, ValidityProof,
+}, LightDiscriminator, LightHasher};
 use light_sdk_types::CpiAccountsConfig;
 use light_compressed_account::instruction_data::data::{
     NewAddressParamsAssignedPacked,
 };
-use light_hasher::{DataHasher, Hasher, HasherError};
 use light_sdk::cpi::{CpiAccountsSmall, WithLightAccount};
 use light_sdk_types::address::AddressSeed;
 
@@ -28,6 +21,8 @@ declare_id!("DELeGr1ZdNJ6PK8zu9g4Zvw1H85Wgy3Up5Eh7uo9XDHZ");
 
 pub const LIGHT_CPI_SIGNER: CpiSigner =
     derive_light_cpi_signer!("DELeGr1ZdNJ6PK8zu9g4Zvw1H85Wgy3Up5Eh7uo9XDHZ");
+
+pub const TREE_ACCOUNT_PUBKEY: Pubkey = pubkey!("amt2kaJA14v3urZbZvnc5v2np8jqvc4Z8zDep5wbtzx");
 
 #[program]
 pub mod delegation {
@@ -55,10 +50,9 @@ pub mod delegation {
         let mut light_cpi_accounts = light_cpi_accounts.to_account_infos().to_vec();
         light_cpi_accounts[1] = ctx.accounts.delegation_cpi_signer.to_account_info();
 
-        let tree_account_pk = pubkey!("amt2kaJA14v3urZbZvnc5v2np8jqvc4Z8zDep5wbtzx");
-        let seed = AddressSeed(ctx.accounts.delegation_cpi_signer.key.to_bytes());
+        let seed = AddressSeed(ctx.accounts.pda.key.to_bytes());
         let address =
-            light_sdk::address::v2::derive_address_from_seed(&seed, &tree_account_pk, &ID);
+            light_sdk::address::v2::derive_address_from_seed(&seed, &TREE_ACCOUNT_PUBKEY, &ID);
         let new_address_params = address_tree_info.into_new_address_params_packed(seed);
 
         let mut compressed_data = LightAccount::<'_, CDelegationRecord>::new_init(
@@ -66,7 +60,7 @@ pub mod delegation {
             Some(address),
             account_meta.output_state_tree_index,
         );
-        compressed_data.data = vec![1];
+        compressed_data.data = out_account.compressed_account.data.clone().map(| d | d.data).unwrap_or(vec![0]);
         compressed_data.pda = ctx.accounts.pda.key();
         compressed_data.lamports = 0;
         compressed_data.delegation_slot = Clock::get()?.slot;
@@ -103,18 +97,16 @@ pub struct Delegate<'info> {
     pub light_system_program: AccountInfo<'info>,
 }
 
-#[derive(Clone, Debug, Default, LightDiscriminator, BorshDeserialize, BorshSerialize)]
+#[derive(Clone, Debug, Default, LightDiscriminator, BorshDeserialize, BorshSerialize, LightHasher)]
 pub struct CDelegationRecord {
+    #[hash]
     pub pda: Pubkey,
+    #[hash]
     pub authority: Pubkey,
+    #[hash]
     pub owner: Pubkey,
     pub delegation_slot: u64,
     pub lamports: u64,
+    #[hash]
     pub data: Vec<u8>,
-}
-
-impl DataHasher for CDelegationRecord{
-    fn hash<H: Hasher>(&self) -> std::result::Result<[u8; 32], HasherError> {
-        Ok(self.pda.to_bytes())
-    }
 }

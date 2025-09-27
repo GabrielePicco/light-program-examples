@@ -3,6 +3,7 @@
 use anchor_lang::prelude::msg;
 use anchor_lang::{AnchorDeserialize, Event, InstructionData, ToAccountMetas};
 use counter::CounterAccount;
+use delegation::{CDelegationRecord, ID, TREE_ACCOUNT_PUBKEY};
 use light_client::indexer::{CompressedAccount, TreeInfo};
 use light_compressed_account::address::derive_address;
 use light_hasher::hash_to_field_size::hashv_to_bn254_field_size_be_const_array;
@@ -20,7 +21,6 @@ use solana_sdk::{
     instruction::Instruction,
     signature::{Keypair, Signature, Signer},
 };
-use delegation::{CDelegationRecord, ID, TREE_ACCOUNT_PUBKEY};
 
 #[tokio::test]
 async fn test_counter_delegation() {
@@ -40,10 +40,14 @@ async fn test_counter_delegation() {
     let seed = hashv_to_bn254_field_size_be_const_array::<3>(&[
         b"counter".as_slice(),
         payer.pubkey().as_ref(),
-    ]).unwrap();
+    ])
+    .unwrap();
 
-    let address =
-        light_sdk::address::v2::derive_address_from_seed(&AddressSeed(seed), &address_tree_info.tree, &counter::ID);
+    let address = light_sdk::address::v2::derive_address_from_seed(
+        &AddressSeed(seed),
+        &address_tree_info.tree,
+        &counter::ID,
+    );
 
     // Create the counter.
     create_counter(&mut rpc, &payer, &address, address_tree_info)
@@ -87,7 +91,8 @@ async fn test_counter_delegation() {
     assert_eq!(prev_counter_data, counter.data());
 
     // Get the new counter account, deriving the address from mappedPDA
-    let counter_pda = Pubkey::find_program_address(&[b"counter", payer.pubkey().as_ref()], &counter::ID).0;
+    let counter_pda =
+        Pubkey::find_program_address(&[b"counter", payer.pubkey().as_ref()], &counter::ID).0;
     let cda_address = light_sdk::address::v2::derive_address_from_seed(
         &AddressSeed(counter_pda.to_bytes()),
         &rpc.get_address_tree_v2().tree,
@@ -101,7 +106,8 @@ async fn test_counter_delegation() {
     let compressed_account_data = &new_compressed_account.data.as_ref().unwrap().data;
 
     // Confirm that the CDelegationRecord has expected data and the counter data is unchanged
-    let compressed_account = CDelegationRecord::deserialize(&mut &compressed_account_data[..]).unwrap();
+    let compressed_account =
+        CDelegationRecord::deserialize(&mut &compressed_account_data[..]).unwrap();
     let counter = CounterAccount::deserialize(&mut &compressed_account.data[..]).unwrap();
     assert_eq!(prev_counter_data, counter.data());
 }
@@ -145,7 +151,11 @@ where
 
     let accounts = counter::accounts::GenericAnchorAccounts {
         signer: payer.pubkey(),
-        counter_pda_account: Pubkey::find_program_address(&[b"counter", payer.pubkey().as_ref()], &counter::ID).0,
+        counter_pda_account: Pubkey::find_program_address(
+            &[b"counter", payer.pubkey().as_ref()],
+            &counter::ID,
+        )
+        .0,
         delegation_program: delegation::ID,
         delegation_cpi_signer: Pubkey::new_from_array(delegation::LIGHT_CPI_SIGNER.cpi_signer),
     };
@@ -177,7 +187,8 @@ where
 {
     let hash = compressed_account.hash;
 
-    let counter_pda = Pubkey::find_program_address(&[b"counter", payer.pubkey().as_ref()], &counter::ID).0;
+    let counter_pda =
+        Pubkey::find_program_address(&[b"counter", payer.pubkey().as_ref()], &counter::ID).0;
 
     let address = light_sdk::address::v2::derive_address_from_seed(
         &AddressSeed(counter_pda.to_bytes()),

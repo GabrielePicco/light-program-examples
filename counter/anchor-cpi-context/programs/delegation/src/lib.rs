@@ -1,21 +1,22 @@
 #![allow(unexpected_cfgs)]
 
-use anchor_lang::prelude::*;
 use anchor_lang::prelude::borsh::{BorshDeserialize, BorshSerialize};
+use anchor_lang::prelude::*;
+use light_compressed_account::instruction_data::data::NewAddressParamsAssignedPacked;
 use light_compressed_account::instruction_data::data::OutputCompressedAccountWithPackedContext;
 use light_compressed_account::instruction_data::with_readonly::InAccount;
 use light_compressed_account::instruction_data::with_readonly::InstructionDataInvokeCpiWithReadOnly;
 use light_sdk::cpi::InvokeLightSystemProgram;
-use light_sdk::{account::LightAccount, cpi::{CpiSigner}, derive_light_cpi_signer, instruction::{
-    account_meta::{CompressedAccountMeta},
-    PackedAddressTreeInfo, ValidityProof,
-}, LightDiscriminator, LightHasher};
-use light_sdk_types::CpiAccountsConfig;
-use light_compressed_account::instruction_data::data::{
-    NewAddressParamsAssignedPacked,
-};
 use light_sdk::cpi::{CpiAccountsSmall, WithLightAccount};
+use light_sdk::{
+    account::LightAccount,
+    cpi::CpiSigner,
+    derive_light_cpi_signer,
+    instruction::{PackedAddressTreeInfo, ValidityProof},
+    LightDiscriminator, LightHasher,
+};
 use light_sdk_types::address::AddressSeed;
+use light_sdk_types::CpiAccountsConfig;
 
 declare_id!("DELeGr1ZdNJ6PK8zu9g4Zvw1H85Wgy3Up5Eh7uo9XDHZ");
 
@@ -60,17 +61,23 @@ pub mod delegation {
             Some(address),
             output_state_tree_index,
         );
-        compressed_data.data = out_account.compressed_account.data.clone().map(| d | d.data).unwrap_or(vec![0]);
+        compressed_data.data = out_account
+            .compressed_account
+            .data
+            .clone()
+            .map(|d| d.data)
+            .unwrap_or_default();
         compressed_data.pda = ctx.accounts.pda.key();
         compressed_data.lamports = 0;
         compressed_data.delegation_slot = Clock::get()?.slot;
-        compressed_data.address = in_account.address;
+        compressed_data.address = in_account.address.unwrap_or_default();
 
         InstructionDataInvokeCpiWithReadOnly::new(
             LIGHT_CPI_SIGNER.program_id.into(),
             LIGHT_CPI_SIGNER.bump,
             proof.into(),
-        ).mode_v2()
+        )
+        .mode_v2()
         .with_input_compressed_accounts(vec![in_account])
         .with_output_compressed_accounts(vec![out_account])
         .with_new_address_params(vec![NewAddressParamsAssignedPacked::new(
@@ -97,10 +104,12 @@ pub struct Delegate<'info> {
     pub light_system_program: AccountInfo<'info>,
 }
 
-#[derive(Clone, Debug, Default, LightDiscriminator, BorshDeserialize, BorshSerialize, LightHasher)]
+#[derive(
+    Clone, Debug, Default, LightDiscriminator, BorshDeserialize, BorshSerialize, LightHasher,
+)]
 pub struct CDelegationRecord {
     #[hash]
-    pub address: Option<[u8; 32]>,
+    pub address: [u8; 32],
     #[hash]
     pub pda: Pubkey,
     #[hash]

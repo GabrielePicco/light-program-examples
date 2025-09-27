@@ -25,6 +25,9 @@ use light_sdk::cpi::{CpiAccountsSmall, InvokeLightSystemProgram};
 use light_sdk_types::{
     cpi_context_write::CpiContextWriteAccounts, CpiAccountsConfig,
 };
+use light_compressed_account::instruction_data::data::NewAddressParamsAssignedPacked;
+use light_sdk::cpi::WithLightAccount;
+use light_sdk_types::address::AddressSeed;
 
 declare_id!("H3WD4CZ5GFxxJtqC8vNqHRPfepfRXGNVZeAFdEat9cgv");
 
@@ -41,7 +44,7 @@ pub mod counter {
         address_tree_info: PackedAddressTreeInfo,
         output_state_tree_index: u8,
     ) -> Result<()> {
-        let cpi_accounts = CpiAccounts::new(
+        let cpi_accounts = CpiAccountsSmall::new(
             ctx.accounts.signer.as_ref(),
             ctx.remaining_accounts,
             LIGHT_CPI_SIGNER,
@@ -50,13 +53,8 @@ pub mod counter {
             b"counter".as_slice(),
             ctx.accounts.signer.key().as_ref(),
         ]).unwrap();
-        let address = derive_address(
-            &seed,
-            &cpi_accounts.tree_pubkeys().unwrap()
-                [address_tree_info.address_merkle_tree_pubkey_index as usize]
-                .to_bytes(),
-            &ID.to_bytes(),
-        );
+
+        let address = light_sdk::address::v2::derive_address_from_seed(&AddressSeed(seed), &cpi_accounts.tree_pubkeys().unwrap()[address_tree_info.address_merkle_tree_pubkey_index as usize], &ID);
 
         let new_address_params = address_tree_info.into_new_address_params_packed(seed.into());
         let mut counter = LightAccount::<'_, CounterAccount>::new_init(
@@ -68,13 +66,18 @@ pub mod counter {
         counter.owner = ctx.accounts.signer.key();
         counter.value = 0;
 
-        let cpi = CpiInputs::new_with_address(
-            proof,
-            vec![counter.to_account_info().map_err(ProgramError::from)?],
-            vec![new_address_params],
-        );
-        cpi.invoke_light_system_program(cpi_accounts)
-            .map_err(ProgramError::from)?;
+        InstructionDataInvokeCpiWithReadOnly::new(
+            LIGHT_CPI_SIGNER.program_id.into(),
+            LIGHT_CPI_SIGNER.bump,
+            proof.into(),
+        ).mode_v2()
+            .with_light_account(counter).map_err(ProgramError::from)?
+            .with_new_address_params(vec![NewAddressParamsAssignedPacked::new(
+                new_address_params,
+                Some(0),
+            )])
+            .invoke(cpi_accounts.to_account_infos().as_slice())?;
+
         Ok(())
     }
 
@@ -175,10 +178,10 @@ pub mod counter {
             delegation::cpi::delegate(
                 cpi_ctx,
                 proof,
-                account_meta,
                 in_account,
                 out_account,
                 address_tree_info,
+                account_meta.output_state_tree_index,
             )?;
         }
         Ok(())

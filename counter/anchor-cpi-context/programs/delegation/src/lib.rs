@@ -31,10 +31,10 @@ pub mod delegation {
     pub fn delegate<'info>(
         ctx: Context<'_, '_, '_, 'info, Delegate<'info>>,
         proof: ValidityProof,
-        account_meta: CompressedAccountMeta,
         in_account: InAccount,
         out_account: OutputCompressedAccountWithPackedContext,
         address_tree_info: PackedAddressTreeInfo,
+        output_state_tree_index: u8,
     ) -> Result<()> {
         let light_cpi_accounts = CpiAccountsSmall::new_with_config(
             ctx.accounts.signer.as_ref(),
@@ -58,13 +58,13 @@ pub mod delegation {
         let mut compressed_data = LightAccount::<'_, CDelegationRecord>::new_init(
             &ID,
             Some(address),
-            account_meta.output_state_tree_index,
+            output_state_tree_index,
         );
         compressed_data.data = out_account.compressed_account.data.clone().map(| d | d.data).unwrap_or(vec![0]);
         compressed_data.pda = ctx.accounts.pda.key();
         compressed_data.lamports = 0;
         compressed_data.delegation_slot = Clock::get()?.slot;
-
+        compressed_data.address = in_account.address;
 
         InstructionDataInvokeCpiWithReadOnly::new(
             LIGHT_CPI_SIGNER.program_id.into(),
@@ -99,6 +99,8 @@ pub struct Delegate<'info> {
 
 #[derive(Clone, Debug, Default, LightDiscriminator, BorshDeserialize, BorshSerialize, LightHasher)]
 pub struct CDelegationRecord {
+    #[hash]
+    pub address: Option<[u8; 32]>,
     #[hash]
     pub pda: Pubkey,
     #[hash]

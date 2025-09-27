@@ -20,7 +20,7 @@ idl-build = ["anchor-lang/idl-build", "light-sdk/idl-build"]
 [dependencies]
 anchor-lang = "0.31.1"
 light-hasher = { git = "https://github.com/Lightprotocol/light-protocol", branch = "jorrit/feat-sdk-v2", features = ["solana"] }
-light-sdk = { git = "https://github.com/Lightprotocol/light-protocol", branch = "jorrit/feat-sdk-v2", features = ["anchor"] }
+light-sdk = { git = "https://github.com/Lightprotocol/light-protocol", branch = "jorrit/feat-sdk-v2", features = ["anchor", "v2"] }
 light-compressed-account = { git = "https://github.com/Lightprotocol/light-protocol", branch = "jorrit/feat-sdk-v2", features = ["anchor"] }
 light-batched-merkle-tree = { git = "https://github.com/Lightprotocol/light-protocol", branch = "jorrit/feat-sdk-v2", features = ["solana"] }
 light-sdk-types = { git = "https://github.com/Lightprotocol/light-protocol", branch = "jorrit/feat-sdk-v2", features = ["anchor"] }

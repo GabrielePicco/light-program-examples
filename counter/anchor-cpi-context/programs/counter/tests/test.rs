@@ -20,7 +20,7 @@ use solana_sdk::{
     instruction::Instruction,
     signature::{Keypair, Signature, Signer},
 };
-use delegation::CDelegationRecord;
+use delegation::{CDelegationRecord, ID, TREE_ACCOUNT_PUBKEY};
 
 #[tokio::test]
 async fn test_counter_delegation() {
@@ -36,17 +36,14 @@ async fn test_counter_delegation() {
     let payer = rpc.get_payer().insecure_clone();
 
     let address_tree_info = rpc.get_address_tree_v2();
+
     let seed = hashv_to_bn254_field_size_be_const_array::<3>(&[
         b"counter".as_slice(),
         payer.pubkey().as_ref(),
-    ])
-    .unwrap();
+    ]).unwrap();
 
-    let address = derive_address(
-        &seed,
-        &address_tree_info.tree.to_bytes(),
-        &counter::ID.to_bytes(),
-    );
+    let address =
+        light_sdk::address::v2::derive_address_from_seed(&AddressSeed(seed), &address_tree_info.tree, &counter::ID);
 
     // Create the counter.
     create_counter(&mut rpc, &payer, &address, address_tree_info)
@@ -82,7 +79,7 @@ async fn test_counter_delegation() {
 
     // Check that the owner of the counter is the delegation program
     assert_eq!(compressed_account.owner, delegation::ID);
-    println!("compressed_account {:?}", compressed_account);
+    println!("\nCompressed_account {:?}", compressed_account);
 
     // Check that the data of the counter is the same.
     let counter = &compressed_account.data.as_ref().unwrap().data;
@@ -120,7 +117,7 @@ where
 {
     let mut remaining_accounts = PackedAccounts::default();
     let config = SystemAccountMetaConfig::new(counter::ID);
-    remaining_accounts.add_system_accounts(config);
+    remaining_accounts.add_system_accounts_small(config);
 
     let rpc_result = rpc
         .get_validity_proof(

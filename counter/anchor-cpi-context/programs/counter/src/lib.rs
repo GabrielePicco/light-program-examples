@@ -1,24 +1,20 @@
 #![allow(unexpected_cfgs)]
 
 use anchor_lang::{prelude::*, AnchorDeserialize, Discriminator};
-use light_batched_merkle_tree::queue::BatchedQueueAccount;
 use light_compressed_account::instruction_data::data::NewAddressParamsAssignedPacked;
-use light_compressed_account::{
-    address::derive_address, instruction_data::with_readonly::InstructionDataInvokeCpiWithReadOnly,
-};
+use light_compressed_account::instruction_data::with_readonly::InstructionDataInvokeCpiWithReadOnly;
 use light_hasher::hash_to_field_size::hashv_to_bn254_field_size_be_const_array;
 use light_sdk::cpi::WithLightAccount;
 use light_sdk::cpi::{CpiAccountsSmall, InvokeLightSystemProgram};
 use light_sdk::{
     account::LightAccount,
-    cpi::{CpiAccounts, CpiInputs, CpiSigner},
+    cpi::CpiSigner,
     derive_light_cpi_signer,
     instruction::{account_meta::CompressedAccountMeta, PackedAddressTreeInfo, ValidityProof},
     LightDiscriminator, LightHasher,
 };
 use light_sdk_types::address::AddressSeed;
 use light_sdk_types::{cpi_context_write::CpiContextWriteAccounts, CpiAccountsConfig};
-use light_compressed_account::compressed_account::PackedMerkleContext;
 
 declare_id!("H3WD4CZ5GFxxJtqC8vNqHRPfepfRXGNVZeAFdEat9cgv");
 
@@ -85,7 +81,6 @@ pub mod counter {
         account_meta: CompressedAccountMeta,
         address_tree_info: PackedAddressTreeInfo,
     ) -> Result<()> {
-        let mut account_meta = account_meta;
         let light_cpi_accounts = CpiAccountsSmall::new_with_config(
             ctx.accounts.signer.as_ref(),
             ctx.remaining_accounts,
@@ -107,7 +102,6 @@ pub mod counter {
             },
         )
         .map_err(ProgramError::from)?;
-
         let cpi_context_accounts = CpiContextWriteAccounts {
             fee_payer: light_cpi_accounts.fee_payer(),
             authority: light_cpi_accounts.authority().unwrap(),
@@ -132,29 +126,13 @@ pub mod counter {
         .with_output_compressed_accounts(vec![out_account])
         .invoke_write_to_cpi_context_first(&cpi_context_accounts.to_account_infos())?;
 
-        // Set the original leaf index and prove by index
-        let account_info = light_cpi_accounts.get_tree_account_info(1).unwrap();
-        let output_queue = BatchedQueueAccount::output_from_account_info(account_info).unwrap();
-        account_meta.tree_info.leaf_index = output_queue.batch_metadata.next_index as u32;
-        account_meta.tree_info.prove_by_index = true;
-
-        let mut in_account = counter.to_in_account().unwrap();
-        in_account.merkle_context = PackedMerkleContext{
-            merkle_tree_pubkey_index: account_meta.tree_info.merkle_tree_pubkey_index,
-            queue_pubkey_index: account_meta.tree_info.queue_pubkey_index,
-            leaf_index: account_meta.tree_info.leaf_index,
-            prove_by_index: true,
-        };
-        in_account.discriminator = [0u8; 8];
-        in_account.data_hash = [0u8; 32];
-
-        let out_account = counter
-            .to_output_compressed_account_with_packed_context(Some(delegation::ID))
-            .map_err(ProgramError::from)?
-            .ok_or(ProgramError::InvalidAccountData)?;
-
         // CPI into the delegation program
         {
+            let out_account = counter
+                .to_output_compressed_account_with_packed_context(Some(delegation::ID))
+                .map_err(ProgramError::from)?
+                .ok_or(ProgramError::InvalidAccountData)?;
+
             let cpi_accounts = delegation::cpi::accounts::Delegate {
                 signer: ctx.accounts.signer.to_account_info(),
                 pda: ctx.accounts.counter_pda_account.to_account_info(),
@@ -164,21 +142,25 @@ pub mod counter {
             };
             let cpi_program = ctx.accounts.delegation_program.to_account_info();
             let signer = ctx.accounts.signer.key;
-            let pda_seeds: &[&[&[u8]]] = &[&[
-                b"counter",
-                signer.as_ref(),
-                &[ctx.bumps.counter_pda_account],
-            ]];
-            let cpi_ctx = CpiContext::new_with_signer(cpi_program, cpi_accounts, pda_seeds);
-            let cpi_ctx =
-                cpi_ctx.with_remaining_accounts(light_cpi_accounts.to_account_infos().into());
+            let bump = ctx.bumps.counter_pda_account;
+            let signer_seeds_no_bump: Vec<Vec<u8>> =
+                vec![b"counter".to_vec(), signer.to_bytes().to_vec()];
+            let signers_seeds = signer_seeds_no_bump.clone();
+            let signer_seeds: Vec<&[u8]> = signers_seeds.iter().map(|s| s.as_slice()).collect();
+            let signer_seeds: &[&[&[u8]]] = &[&[signer_seeds[0], signer_seeds[1], &[bump]]];
+
+            let cpi_ctx = CpiContext::new_with_signer(cpi_program, cpi_accounts, signer_seeds);
+            let cpi_ctx = cpi_ctx.with_remaining_accounts(light_cpi_accounts.to_account_infos());
             delegation::cpi::delegate(
                 cpi_ctx,
                 proof,
+                account_meta,
                 in_account,
                 out_account,
                 address_tree_info,
-                account_meta.output_state_tree_index,
+                ID,
+                signer_seeds_no_bump,
+                bump,
             )?;
         }
         Ok(())

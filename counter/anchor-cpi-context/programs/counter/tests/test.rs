@@ -1,21 +1,17 @@
 // #![cfg(feature = "test-sbf")]
 
-use anchor_lang::prelude::msg;
 use anchor_lang::{AnchorDeserialize, Event, InstructionData, ToAccountMetas};
 use counter::CounterAccount;
-use delegation::{CDelegationRecord, ID, TREE_ACCOUNT_PUBKEY};
+use delegation::CDelegationRecord;
 use light_client::indexer::{CompressedAccount, TreeInfo};
-use light_compressed_account::address::derive_address;
 use light_hasher::hash_to_field_size::hashv_to_bn254_field_size_be_const_array;
 use light_program_test::{
     program_test::LightProgramTest, AddressWithTree, Indexer, ProgramTestConfig, Rpc, RpcError,
 };
 use light_sdk::instruction::{
-    account_meta::{CompressedAccountMeta, CompressedAccountMetaClose},
-    PackedAccounts, SystemAccountMetaConfig,
+    account_meta::CompressedAccountMeta, PackedAccounts, SystemAccountMetaConfig,
 };
 use light_sdk_types::address::AddressSeed;
-use light_sdk_types::NOOP_PROGRAM_ID;
 use solana_pubkey::Pubkey;
 use solana_sdk::{
     instruction::Instruction,
@@ -110,6 +106,9 @@ async fn test_counter_delegation() {
         CDelegationRecord::deserialize(&mut &compressed_account_data[..]).unwrap();
     let counter = CounterAccount::deserialize(&mut &compressed_account.data[..]).unwrap();
     assert_eq!(prev_counter_data, counter.data());
+    assert_eq!(compressed_account.pda, counter_pda);
+    assert_eq!(compressed_account.address, address);
+    assert_eq!(compressed_account.owner, counter::ID);
 }
 
 async fn create_counter<R>(
@@ -123,7 +122,7 @@ where
 {
     let mut remaining_accounts = PackedAccounts::default();
     let config = SystemAccountMetaConfig::new(counter::ID);
-    remaining_accounts.add_system_accounts_small(config);
+    remaining_accounts.add_system_accounts_small(config)?;
 
     let rpc_result = rpc
         .get_validity_proof(

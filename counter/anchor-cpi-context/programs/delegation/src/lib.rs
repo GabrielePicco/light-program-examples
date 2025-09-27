@@ -1,32 +1,24 @@
 #![allow(unexpected_cfgs)]
 
-use std::hash::Hash;
 use anchor_lang::prelude::*;
 use anchor_lang::prelude::borsh::{BorshDeserialize, BorshSerialize};
-use light_batched_merkle_tree::queue::BatchedQueueAccount;
-use light_compressed_account::instruction_data::cpi_context::CompressedCpiContext;
 use light_compressed_account::instruction_data::data::OutputCompressedAccountWithPackedContext;
-use light_compressed_account::instruction_data::with_account_info::CompressedAccountInfo;
 use light_compressed_account::instruction_data::with_readonly::InAccount;
 use light_compressed_account::instruction_data::with_readonly::InstructionDataInvokeCpiWithReadOnly;
-use light_hasher::to_byte_array::ToByteArray;
 use light_sdk::cpi::InvokeLightSystemProgram;
-use light_sdk::cpi::{
-    create_light_system_progam_instruction_invoke_cpi, invoke_light_system_program,
-};
 use light_sdk::{
     account::LightAccount,
-    cpi::{CpiAccounts, CpiInputs, CpiSigner},
+    cpi::{CpiSigner},
     derive_light_cpi_signer,
     instruction::{
-        account_meta::{CompressedAccountMeta, CompressedAccountMetaClose},
+        account_meta::{CompressedAccountMeta},
         PackedAddressTreeInfo, ValidityProof,
     },
-    LightDiscriminator, LightHasher,
+    LightDiscriminator,
 };
 use light_sdk_types::CpiAccountsConfig;
 use light_compressed_account::instruction_data::data::{
-    NewAddressParams, NewAddressParamsAssignedPacked,
+    NewAddressParamsAssignedPacked,
 };
 use light_hasher::{DataHasher, Hasher, HasherError};
 use light_sdk::cpi::{CpiAccountsSmall, WithLightAccount};
@@ -54,7 +46,7 @@ pub mod delegation {
             ctx.remaining_accounts,
             CpiAccountsConfig {
                 cpi_context: true,
-                cpi_signer: crate::LIGHT_CPI_SIGNER,
+                cpi_signer: LIGHT_CPI_SIGNER,
                 sol_compression_recipient: false,
                 sol_pool_pda: false,
             },
@@ -75,6 +67,10 @@ pub mod delegation {
             account_meta.output_state_tree_index,
         );
         compressed_data.data = vec![1];
+        compressed_data.pda = ctx.accounts.pda.key();
+        compressed_data.lamports = 0;
+        compressed_data.delegation_slot = Clock::get()?.slot;
+
 
         InstructionDataInvokeCpiWithReadOnly::new(
             LIGHT_CPI_SIGNER.program_id.into(),
@@ -98,16 +94,13 @@ pub mod delegation {
 pub struct Delegate<'info> {
     #[account(mut)]
     pub signer: Signer<'info>,
+    pub pda: Signer<'info>,
     /// CHECK: delegation program
     pub delegation_program: AccountInfo<'info>,
     /// CHECK: cpi signer
     pub delegation_cpi_signer: AccountInfo<'info>,
-    /// CHECK: caller cpi signer
-    // pub caller_cpi_signer: AccountInfo<'info>,
     /// CHECK: light system program
     pub light_system_program: AccountInfo<'info>,
-    /// CHECK: noop program
-    pub noop_program: AccountInfo<'info>,
 }
 
 #[derive(Clone, Debug, Default, LightDiscriminator, BorshDeserialize, BorshSerialize)]

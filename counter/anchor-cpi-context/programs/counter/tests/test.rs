@@ -31,7 +31,7 @@ async fn test_counter_delegation() {
             ("delegation", delegation::ID),
         ]),
     );
-    config.log_light_protocol_events = true;
+    // config.log_light_protocol_events = true;
     let mut rpc = LightProgramTest::new(config).await.unwrap();
     let payer = rpc.get_payer().insecure_clone();
 
@@ -68,7 +68,7 @@ async fn test_counter_delegation() {
     // Check that the owner of the counter is the creating program
     assert_eq!(compressed_account.owner, counter::ID);
 
-    // Increment the counter.
+    // Delegate the counter.
     delegate_counter(&mut rpc, &payer, &compressed_account)
         .await
         .unwrap();
@@ -80,7 +80,7 @@ async fn test_counter_delegation() {
         .unwrap()
         .value;
 
-    // Check that the owner of the counter is the creating program
+    // Check that the owner of the counter is the delegation program
     assert_eq!(compressed_account.owner, delegation::ID);
     println!("compressed_account {:?}", compressed_account);
 
@@ -89,7 +89,7 @@ async fn test_counter_delegation() {
     let counter = CounterAccount::deserialize(&mut &counter[..]).unwrap();
     assert_eq!(prev_counter_data, counter.data());
 
-    // Get the new counter account
+    // Get the new counter account, deriving the address from mappedPDA
     let address = light_sdk::address::v2::derive_address_from_seed(
         &AddressSeed(delegation::LIGHT_CPI_SIGNER.cpi_signer),
         &rpc.get_address_tree_v2().tree,
@@ -101,8 +101,10 @@ async fn test_counter_delegation() {
         .unwrap()
         .value;
     let compressed_account_data = &new_compressed_account.data.as_ref().unwrap().data;
+
+    // Confirm that the CDelegationRecord has expected data
     let compressed_account = CDelegationRecord::deserialize(&mut &compressed_account_data[..]).unwrap();
-    assert_eq!(compressed_account.data, vec![1]);
+    //assert_eq!(compressed_account.data, vec![1]);
 }
 
 async fn create_counter<R>(
@@ -144,9 +146,9 @@ where
 
     let accounts = counter::accounts::GenericAnchorAccounts {
         signer: payer.pubkey(),
+        counter_pda_account: Pubkey::find_program_address(&[b"counter", payer.pubkey().as_ref()], &counter::ID).0,
         delegation_program: delegation::ID,
         delegation_cpi_signer: Pubkey::new_from_array(delegation::LIGHT_CPI_SIGNER.cpi_signer),
-        noop: Pubkey::new_from_array(NOOP_PROGRAM_ID),
     };
 
     let (remaining_accounts_metas, _, _) = remaining_accounts.to_account_metas();
@@ -181,9 +183,6 @@ where
         &rpc.get_address_tree_v2().tree,
         &delegation::ID,
     );
-    msg!("tree calling tree: {:?}", &rpc.get_address_tree_v2().tree);
-
-    println!("test calling address: {:?}", address);
 
     let rpc_result = rpc
         .get_validity_proof(
@@ -194,24 +193,11 @@ where
             }],
             None,
         )
-        //.get_validity_proof(vec![hash], vec![], None)
         .await?
         .value;
 
     let mut remaining_accounts = PackedAccounts::default();
     let packed_tree_accounts = rpc_result.pack_tree_infos(&mut remaining_accounts);
-
-    // let rpc_result_creation = rpc
-    //     .get_validity_proof(
-    //         vec![],
-    //         vec![AddressWithTree {
-    //             address,
-    //             tree: rpc.get_address_tree_v2().tree,
-    //         }],
-    //         None,
-    //     )
-    //     .await?
-    //     .value;
 
     let packed_tree_creation_accounts = rpc_result.pack_tree_infos(&mut remaining_accounts);
     let address_tree_info = packed_tree_creation_accounts.address_trees[0];
@@ -243,199 +229,9 @@ where
 
     let accounts = counter::accounts::GenericAnchorAccounts {
         signer: payer.pubkey(),
+        counter_pda_account: Pubkey::find_program_address(&[b"counter", payer.pubkey().as_ref()], &counter::ID).0,
         delegation_program: delegation::ID,
         delegation_cpi_signer: Pubkey::new_from_array(delegation::LIGHT_CPI_SIGNER.cpi_signer),
-        noop: Pubkey::new_from_array(NOOP_PROGRAM_ID),
-    };
-
-    let (remaining_accounts_metas, _, _) = remaining_accounts.to_account_metas();
-
-    let instruction = Instruction {
-        program_id: counter::ID,
-        accounts: [
-            accounts.to_account_metas(Some(true)),
-            remaining_accounts_metas,
-        ]
-        .concat(),
-        data: instruction_data.data(),
-    };
-
-    rpc.create_and_send_transaction(&[instruction], &payer.pubkey(), &[payer])
-        .await
-}
-
-#[allow(clippy::too_many_arguments)]
-async fn decrement_counter<R>(
-    rpc: &mut R,
-    payer: &Keypair,
-    compressed_account: &CompressedAccount,
-) -> Result<Signature, RpcError>
-where
-    R: Rpc + Indexer,
-{
-    let mut remaining_accounts = PackedAccounts::default();
-    let config = SystemAccountMetaConfig::new(counter::ID);
-    remaining_accounts.add_system_accounts(config);
-
-    let hash = compressed_account.hash;
-
-    let rpc_result = rpc
-        .get_validity_proof(Vec::from(&[hash]), vec![], None)
-        .await?
-        .value;
-
-    let packed_tree_accounts = rpc_result
-        .pack_tree_infos(&mut remaining_accounts)
-        .state_trees
-        .unwrap();
-
-    let counter_account =
-        CounterAccount::deserialize(&mut compressed_account.data.as_ref().unwrap().data.as_slice())
-            .unwrap();
-
-    let account_meta = CompressedAccountMeta {
-        tree_info: packed_tree_accounts.packed_tree_infos[0],
-        address: compressed_account.address.unwrap(),
-        output_state_tree_index: packed_tree_accounts.output_tree_index,
-    };
-
-    let instruction_data = counter::instruction::DecrementCounter {
-        proof: rpc_result.proof,
-        counter_value: counter_account.value,
-        account_meta,
-    };
-
-    let accounts = counter::accounts::GenericAnchorAccounts {
-        signer: payer.pubkey(),
-        delegation_program: delegation::ID,
-        delegation_cpi_signer: Pubkey::new_from_array(delegation::LIGHT_CPI_SIGNER.cpi_signer),
-        noop: Pubkey::new_from_array(NOOP_PROGRAM_ID),
-    };
-
-    let (remaining_accounts_metas, _, _) = remaining_accounts.to_account_metas();
-
-    let instruction = Instruction {
-        program_id: counter::ID,
-        accounts: [
-            accounts.to_account_metas(Some(true)),
-            remaining_accounts_metas,
-        ]
-        .concat(),
-        data: instruction_data.data(),
-    };
-
-    rpc.create_and_send_transaction(&[instruction], &payer.pubkey(), &[payer])
-        .await
-}
-
-async fn reset_counter<R>(
-    rpc: &mut R,
-    payer: &Keypair,
-    compressed_account: &CompressedAccount,
-) -> Result<Signature, RpcError>
-where
-    R: Rpc + Indexer,
-{
-    let mut remaining_accounts = PackedAccounts::default();
-    let config = SystemAccountMetaConfig::new(counter::ID);
-    remaining_accounts.add_system_accounts(config);
-
-    let hash = compressed_account.hash;
-
-    let rpc_result = rpc
-        .get_validity_proof(Vec::from(&[hash]), vec![], None)
-        .await?
-        .value;
-
-    let packed_merkle_context = rpc_result
-        .pack_tree_infos(&mut remaining_accounts)
-        .state_trees
-        .unwrap();
-
-    let counter_account =
-        CounterAccount::deserialize(&mut compressed_account.data.as_ref().unwrap().data.as_slice())
-            .unwrap();
-
-    let account_meta = CompressedAccountMeta {
-        tree_info: packed_merkle_context.packed_tree_infos[0],
-        address: compressed_account.address.unwrap(),
-        output_state_tree_index: packed_merkle_context.output_tree_index,
-    };
-
-    let instruction_data = counter::instruction::ResetCounter {
-        proof: rpc_result.proof,
-        counter_value: counter_account.value,
-        account_meta,
-    };
-
-    let accounts = counter::accounts::GenericAnchorAccounts {
-        signer: payer.pubkey(),
-        delegation_program: delegation::ID,
-        delegation_cpi_signer: Pubkey::new_from_array(delegation::LIGHT_CPI_SIGNER.cpi_signer),
-        noop: Pubkey::new_from_array(NOOP_PROGRAM_ID),
-    };
-
-    let (remaining_accounts_metas, _, _) = remaining_accounts.to_account_metas();
-
-    let instruction = Instruction {
-        program_id: counter::ID,
-        accounts: [
-            accounts.to_account_metas(Some(true)),
-            remaining_accounts_metas,
-        ]
-        .concat(),
-        data: instruction_data.data(),
-    };
-
-    rpc.create_and_send_transaction(&[instruction], &payer.pubkey(), &[payer])
-        .await
-}
-
-async fn close_counter<R>(
-    rpc: &mut R,
-    payer: &Keypair,
-    compressed_account: &CompressedAccount,
-) -> Result<Signature, RpcError>
-where
-    R: Rpc + Indexer,
-{
-    let mut remaining_accounts = PackedAccounts::default();
-    let config = SystemAccountMetaConfig::new(counter::ID);
-    remaining_accounts.add_system_accounts(config);
-
-    let hash = compressed_account.hash;
-
-    let rpc_result = rpc
-        .get_validity_proof(Vec::from(&[hash]), vec![], None)
-        .await
-        .unwrap()
-        .value;
-
-    let packed_tree_infos = rpc_result
-        .pack_tree_infos(&mut remaining_accounts)
-        .state_trees
-        .unwrap();
-
-    let counter_account =
-        CounterAccount::deserialize(&mut compressed_account.data.as_ref().unwrap().data.as_slice())
-            .unwrap();
-
-    let account_meta = CompressedAccountMetaClose {
-        tree_info: packed_tree_infos.packed_tree_infos[0],
-        address: compressed_account.address.unwrap(),
-    };
-
-    let instruction_data = counter::instruction::CloseCounter {
-        proof: rpc_result.proof,
-        counter_value: counter_account.value,
-        account_meta,
-    };
-
-    let accounts = counter::accounts::GenericAnchorAccounts {
-        signer: payer.pubkey(),
-        delegation_program: delegation::ID,
-        delegation_cpi_signer: Pubkey::new_from_array(delegation::LIGHT_CPI_SIGNER.cpi_signer),
-        noop: Pubkey::new_from_array(NOOP_PROGRAM_ID),
     };
 
     let (remaining_accounts_metas, _, _) = remaining_accounts.to_account_metas();

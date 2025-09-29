@@ -29,7 +29,11 @@ async fn test_counter_delegation() {
     );
     config.log_light_protocol_events = true;
     let mut rpc = LightProgramTest::new(config).await.unwrap();
+    rpc.payer = Keypair::from_bytes(&[74, 183, 167, 69, 156, 246, 176, 34, 96, 21, 56, 158, 76, 206, 19, 168, 27, 169, 9, 27, 92, 253, 151, 219, 95, 122, 150, 205, 24, 76, 163, 8, 6, 206, 225, 221, 60, 225, 130, 197, 220, 248, 45, 86, 98, 158, 224, 232, 103, 72, 206, 106, 36, 28, 6, 92, 195, 194, 180, 62, 127, 218, 223, 105]).unwrap();
     let payer = rpc.get_payer().insecure_clone();
+    rpc.context
+        .airdrop(&payer.pubkey(), 100_000_000_000_000)
+        .expect("Payer airdrop failed.");
 
     let address_tree_info = rpc.get_address_tree_v2();
 

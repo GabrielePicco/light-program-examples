@@ -36,11 +36,15 @@ pub mod counter {
             ctx.remaining_accounts,
             LIGHT_CPI_SIGNER,
         );
+        msg!("CPI Accounts: {:?}", cpi_accounts.to_account_infos().iter().map(|a| a.key.to_string()).collect::<Vec<String>>());
+        msg!("Remaining accounts: {:?}", ctx.remaining_accounts.iter().map(|a| a.key.to_string()).collect::<Vec<String>>());
         let seed = hashv_to_bn254_field_size_be_const_array::<3>(&[
             b"counter".as_slice(),
             ctx.accounts.signer.key().as_ref(),
         ])
         .map_err(|_| ProgramError::InvalidSeeds)?;
+        msg!("Output state tree index: {}", output_state_tree_index);
+        msg!("Address tree info: {:?}", address_tree_info);
 
         let address = light_sdk::address::v2::derive_address_from_seed(
             &AddressSeed(seed),
@@ -48,6 +52,11 @@ pub mod counter {
                 [address_tree_info.address_merkle_tree_pubkey_index as usize],
             &ID,
         );
+
+        msg!("Seed: {:?}", seed);
+        msg!("Tree: {:?}", cpi_accounts.tree_pubkeys().unwrap()[address_tree_info.address_merkle_tree_pubkey_index as usize]);
+        msg!("Program: {:?}", ID);
+        msg!("Address: {:?}", Pubkey::new_from_array(address).to_string());
 
         let mut counter = LightAccount::<'_, CounterAccount>::new_init(
             &ID,
@@ -73,6 +82,56 @@ pub mod counter {
 
         Ok(())
     }
+
+    pub fn increment_counter<'info>(
+        ctx: Context<'_, '_, '_, 'info, IncrementCounter<'info>>,
+    ) -> Result<()> {
+        let counter_account_info = &ctx.accounts.counter_pda_account;
+        let mut counter_data = CounterAccount::try_from_slice(&counter_account_info.data.borrow())?;
+        if counter_data.owner != ctx.accounts.signer.key() {
+            return Err(CustomError::Unauthorized.into());
+        }
+        counter_data.value = counter_data.value.checked_add(1).ok_or(CustomError::Overflow)?;
+        counter_data.serialize(&mut &mut counter_account_info.data.borrow_mut()[..])?;
+        Ok(())
+    }
+
+    pub fn increment_compressed_counter<'info>(
+        ctx: Context<'_, '_, '_, 'info, GenericAnchorAccounts<'info>>,
+        proof: ValidityProof,
+        counter_value: u64,
+        account_meta: CompressedAccountMeta,
+    ) -> Result<()> {
+
+        let cpi_accounts = CpiAccountsSmall::new(
+            ctx.accounts.signer.as_ref(),
+            ctx.remaining_accounts,
+            LIGHT_CPI_SIGNER,
+        );
+
+        let mut counter = LightAccount::<'_, CounterAccount>::new_mut(
+            &ID,
+            &account_meta,
+            CounterAccount {
+                owner: ctx.accounts.signer.key(),
+                value: counter_value,
+            },
+        ).map_err(ProgramError::from)?;
+
+        counter.value = counter.value.checked_add(1).ok_or(CustomError::Overflow)?;
+
+        InstructionDataInvokeCpiWithReadOnly::new(
+            LIGHT_CPI_SIGNER.program_id.into(),
+            LIGHT_CPI_SIGNER.bump,
+            proof.into(),
+        )
+            .mode_v2()
+            .with_light_account(counter)
+            .map_err(ProgramError::from)?
+            .invoke(cpi_accounts.to_account_infos().as_slice())?;
+        Ok(())
+    }
+
 
     pub fn delegate_counter<'info>(
         ctx: Context<'_, '_, '_, 'info, GenericAnchorAccounts<'info>>,
@@ -181,11 +240,22 @@ pub enum CustomError {
 pub struct GenericAnchorAccounts<'info> {
     #[account(mut)]
     pub signer: Signer<'info>,
+    /// CHECK: This is the counter PDA account
     #[account(mut, seeds = [b"counter", signer.key().as_ref()], bump)]
     pub counter_pda_account: AccountInfo<'info>,
     pub delegation_program: Program<'info, delegation::program::Delegation>,
+    /// CHECK: This is the CPI signer derived from the delegation program
     #[account(address = Pubkey::new_from_array(delegation::LIGHT_CPI_SIGNER.cpi_signer))]
     pub delegation_cpi_signer: AccountInfo<'info>,
+}
+
+#[derive(Accounts)]
+pub struct IncrementCounter<'info> {
+    #[account(mut)]
+    pub signer: Signer<'info>,
+    /// CHECK: This is the counter PDA account
+    #[account(mut, seeds = [b"counter", signer.key().as_ref()], bump)]
+    pub counter_pda_account: AccountInfo<'info>,
 }
 
 // declared as event so that it is part of the idl.

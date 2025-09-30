@@ -29,7 +29,13 @@ async fn test_counter_delegation() {
     );
     config.log_light_protocol_events = true;
     let mut rpc = LightProgramTest::new(config).await.unwrap();
-    rpc.payer = Keypair::from_bytes(&[74, 183, 167, 69, 156, 246, 176, 34, 96, 21, 56, 158, 76, 206, 19, 168, 27, 169, 9, 27, 92, 253, 151, 219, 95, 122, 150, 205, 24, 76, 163, 8, 6, 206, 225, 221, 60, 225, 130, 197, 220, 248, 45, 86, 98, 158, 224, 232, 103, 72, 206, 106, 36, 28, 6, 92, 195, 194, 180, 62, 127, 218, 223, 105]).unwrap();
+    rpc.payer = Keypair::from_bytes(&[
+        74, 183, 167, 69, 156, 246, 176, 34, 96, 21, 56, 158, 76, 206, 19, 168, 27, 169, 9, 27, 92,
+        253, 151, 219, 95, 122, 150, 205, 24, 76, 163, 8, 6, 206, 225, 221, 60, 225, 130, 197, 220,
+        248, 45, 86, 98, 158, 224, 232, 103, 72, 206, 106, 36, 28, 6, 92, 195, 194, 180, 62, 127,
+        218, 223, 105,
+    ])
+    .unwrap();
     let payer = rpc.get_payer().insecure_clone();
     rpc.context
         .airdrop(&payer.pubkey(), 100_000_000_000_000)
@@ -138,7 +144,7 @@ async fn test_increment_compressed_counter() {
         b"counter".as_slice(),
         payer.pubkey().as_ref(),
     ])
-        .unwrap();
+    .unwrap();
 
     let address = light_sdk::address::v2::derive_address_from_seed(
         &AddressSeed(seed),
@@ -329,7 +335,6 @@ where
         .await
 }
 
-
 #[allow(clippy::too_many_arguments)]
 async fn increment_compressed_counter<R>(
     rpc: &mut R,
@@ -342,11 +347,7 @@ where
     let hash = compressed_account.hash;
 
     let rpc_result = rpc
-        .get_validity_proof(
-            vec![hash],
-            vec![],
-            None,
-        )
+        .get_validity_proof(vec![hash], vec![], None)
         .await?
         .value;
 
@@ -354,8 +355,7 @@ where
     let packed_tree_accounts = rpc_result.pack_tree_infos(&mut remaining_accounts);
 
     // Ensure CPI context matches the tree used
-    let mut config = SystemAccountMetaConfig::new(counter::ID);
-    config.cpi_context = rpc_result.accounts[0].tree_info.cpi_context;
+    let config = SystemAccountMetaConfig::new(counter::ID);
     remaining_accounts
         .add_system_accounts_small(config)
         .unwrap();

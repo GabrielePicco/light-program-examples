@@ -23,6 +23,8 @@ pub const LIGHT_CPI_SIGNER: CpiSigner =
 
 #[program]
 pub mod counter {
+    use light_sdk::cpi::CpiInputs;
+
     use super::*;
 
     pub fn create_counter<'info>(
@@ -36,8 +38,21 @@ pub mod counter {
             ctx.remaining_accounts,
             LIGHT_CPI_SIGNER,
         );
-        msg!("CPI Accounts: {:?}", cpi_accounts.to_account_infos().iter().map(|a| a.key.to_string()).collect::<Vec<String>>());
-        msg!("Remaining accounts: {:?}", ctx.remaining_accounts.iter().map(|a| a.key.to_string()).collect::<Vec<String>>());
+        msg!(
+            "CPI Accounts: {:?}",
+            cpi_accounts
+                .to_account_infos()
+                .iter()
+                .map(|a| a.key.to_string())
+                .collect::<Vec<String>>()
+        );
+        msg!(
+            "Remaining accounts: {:?}",
+            ctx.remaining_accounts
+                .iter()
+                .map(|a| a.key.to_string())
+                .collect::<Vec<String>>()
+        );
         let seed = hashv_to_bn254_field_size_be_const_array::<3>(&[
             b"counter".as_slice(),
             ctx.accounts.signer.key().as_ref(),
@@ -54,7 +69,11 @@ pub mod counter {
         );
 
         msg!("Seed: {:?}", seed);
-        msg!("Tree: {:?}", cpi_accounts.tree_pubkeys().unwrap()[address_tree_info.address_merkle_tree_pubkey_index as usize]);
+        msg!(
+            "Tree: {:?}",
+            cpi_accounts.tree_pubkeys().unwrap()
+                [address_tree_info.address_merkle_tree_pubkey_index as usize]
+        );
         msg!("Program: {:?}", ID);
         msg!("Address: {:?}", Pubkey::new_from_array(address).to_string());
 
@@ -91,7 +110,10 @@ pub mod counter {
         if counter_data.owner != ctx.accounts.signer.key() {
             return Err(CustomError::Unauthorized.into());
         }
-        counter_data.value = counter_data.value.checked_add(1).ok_or(CustomError::Overflow)?;
+        counter_data.value = counter_data
+            .value
+            .checked_add(1)
+            .ok_or(CustomError::Overflow)?;
         counter_data.serialize(&mut &mut counter_account_info.data.borrow_mut()[..])?;
         Ok(())
     }
@@ -102,7 +124,6 @@ pub mod counter {
         counter_value: u64,
         account_meta: CompressedAccountMeta,
     ) -> Result<()> {
-
         let cpi_accounts = CpiAccountsSmall::new(
             ctx.accounts.signer.as_ref(),
             ctx.remaining_accounts,
@@ -116,22 +137,23 @@ pub mod counter {
                 owner: ctx.accounts.signer.key(),
                 value: counter_value,
             },
-        ).map_err(ProgramError::from)?;
+        )
+        .map_err(ProgramError::from)?;
 
         counter.value = counter.value.checked_add(1).ok_or(CustomError::Overflow)?;
 
-        InstructionDataInvokeCpiWithReadOnly::new(
-            LIGHT_CPI_SIGNER.program_id.into(),
-            LIGHT_CPI_SIGNER.bump,
-            proof.into(),
-        )
-            .mode_v2()
-            .with_light_account(counter)
-            .map_err(ProgramError::from)?
-            .invoke(cpi_accounts.to_account_infos().as_slice())?;
+        let cpi_inputs = CpiInputs::new(
+            proof,
+            vec![counter.to_account_info().map_err(ProgramError::from)?],
+        );
+
+        // Invoke the light system program to update the counter
+        cpi_inputs
+            .invoke_light_system_program_small(cpi_accounts)
+            .map_err(ProgramError::from)?;
+
         Ok(())
     }
-
 
     pub fn delegate_counter<'info>(
         ctx: Context<'_, '_, '_, 'info, GenericAnchorAccounts<'info>>,
